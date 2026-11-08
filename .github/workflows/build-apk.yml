@@ -37,6 +37,8 @@ jobs:
       - name: Inject ProGuard Rules (Fix LazyKType Crash)
         run: |
           echo "-keep class expo.modules.kotlin.** { *; }" >> android/app/proguard-rules.pro
+          echo "-keep class kotlin.reflect.** { *; }" >> android/app/proguard-rules.pro
+          echo "-dontwarn kotlin.reflect.**" >> android/app/proguard-rules.pro
           echo "-keep class expo.modules.lineargradient.** { *; }" >> android/app/proguard-rules.pro
           echo "-keep class expo.modules.** { *; }" >> android/app/proguard-rules.pro
 
