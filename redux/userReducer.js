@@ -1,20 +1,30 @@
 import { UPDATE_USER } from "./constant";
 
+export const SET_USER = "SET_USER";
+export const CLEAR_USER = "CLEAR_USER";
+
 const initialState = {
-  user: {
-    name: 'Demo User',
-    username: 'demoUser',
-    mobile: '123456789',
-    email: 'demo@user.com',
-    password: 'demoUser',
-    mpin: '0000'
-  }
+  user: null,
 };
 
 export const userReducer = (state = initialState, action) => {
   switch (action.type) {
+    case SET_USER:
+      return {
+        ...state,
+        user: action.payload || action.data,
+      };
+
+    case CLEAR_USER:
+      return {
+        ...state,
+        user: null,
+      };
+
     case UPDATE_USER:
-      if (action.data.oldPassword !== state.user.password) {
+      if (!state.user) return state;
+
+      if (action.data?.oldPassword && action.data.oldPassword !== state.user.password) {
         console.warn("Old password does not match");
         return state;
       }
@@ -23,13 +33,14 @@ export const userReducer = (state = initialState, action) => {
         ...state,
         user: {
           ...state.user,
-          name: action.data.name || state.user.name,
-          username: action.data.username || state.user.username,
-          mobile: action.data.mobile || state.user.mobile,
-          email: action.data.email || state.user.email,
-          password: action.data.newPassword || state.user.password,
-          mpin: action.data.newMpin || state.user.mpin
-        }
+          ...action.data,
+          name: action.data?.name || state.user.name,
+          username: action.data?.username || state.user.username,
+          mobile: action.data?.mobile || state.user.mobile,
+          email: action.data?.email || state.user.email,
+          password: action.data?.newPassword || state.user.password,
+          mpin: action.data?.newMpin || state.user.mpin,
+        },
       };
 
     default:

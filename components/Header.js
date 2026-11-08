@@ -1,25 +1,31 @@
-import React from 'react';
-import { StyleSheet, Text, View, Image, TouchableOpacity } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
+import React from "react";
+import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { useNavigation } from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
 
-const Header = () => {
+const Header = ({ title = "Westcott Reserve", showBack = true, onBack }) => {
   const navigation = useNavigation();
 
-  return (
-    <View style={styles.headerContainer}>
-      
-      {/* Back Button - Absolutely Positioned */}
-      <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-        <Ionicons name="arrow-back" size={28} color="#1A237E" />
-      </TouchableOpacity>
+  const handleBack = () => {
+    if (onBack) onBack();
+    else if (navigation.canGoBack()) navigation.goBack();
+  };
 
-      {/* Centered Title */}
-      <View style={styles.centerContainer}>
-        <Text style={styles.headerText}>YONO</Text>
-        <Image source={require('../assets/sbiLogo.png')} style={styles.logo} />
-        <Text style={styles.headerText}>SBI</Text>
+  return (
+    <View style={styles.header}>
+      <View style={styles.sideCol}>
+        {showBack ? (
+          <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
+            <Ionicons name="chevron-back" size={22} color="#D4AF37" />
+          </TouchableOpacity>
+        ) : (
+          <Ionicons name="shield-checkmark" size={20} color="#D4AF37" />
+        )}
       </View>
+
+      <Text style={styles.headerTitle}>{title}</Text>
+
+      <View style={styles.sideCol} />
     </View>
   );
 };
@@ -27,37 +33,27 @@ const Header = () => {
 export default Header;
 
 const styles = StyleSheet.create({
-  headerContainer: {
-    height: 60,
-    backgroundColor: '#fff',
+  header: {
+    height: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    backgroundColor: "#0B0F0E",
     borderBottomWidth: 1,
-    borderBottomColor: '#ccc',
-    justifyContent: 'center',
-    alignItems: 'center',
+    borderBottomColor: "#1E2925",
   },
-
-  backButton: {
-    position: 'absolute',
-    left: 10,
-    top: 15,
-    padding: 5,
+  sideCol: {
+    width: 32,
+    alignItems: "flex-start",
+    justifyContent: "center",
   },
-
-  centerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  backBtn: {
+    padding: 4,
   },
-
-  headerText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1A237E',
-    marginHorizontal: 5,
-  },
-
-  logo: {
-    width: 28,
-    height: 28,
-    resizeMode: 'contain',
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#F8FAFC",
   },
 });

@@ -1,119 +1,131 @@
-import React, { useEffect,useCallback } from 'react';
-import { 
-  StyleSheet, 
-  Text, 
-  View, 
-  Dimensions, 
-  StatusBar,
-  Image 
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import {useFocusEffect} from '@react-navigation/native'
-
-const { width, height } = Dimensions.get('window');
+import React, { useCallback } from 'react';
+import { useAppTheme } from '../hooks/useAppTheme';
+import { StyleSheet, Text, View, StatusBar, ActivityIndicator } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import { useDispatch } from 'react-redux';
+import { AuthService } from '../services/authService';
+import { supabase } from '../services/supabaseClient';
 
 const LoadingScreen = ({ navigation }) => {
-useFocusEffect(
-  useCallback(() => {
-    const timer = setTimeout(() => {
-      navigation.navigate("lock");
-    }, 3000);
+  const { theme, isDark } = useAppTheme();
+  const dispatch = useDispatch();
 
-    return () => clearTimeout(timer); 
-  }, [navigation])
-);
+  useFocusEffect(
+    useCallback(() => {
+      let isMounted = true;
+
+      const checkAuth = async () => {
+        try {
+          const [initialProfile] = await Promise.all([
+            AuthService.getCurrentSession(),
+            new Promise((resolve) => setTimeout(resolve, 1000)),
+          ]);
+
+          if (!isMounted) return;
+
+          let activeProfile = initialProfile;
+
+          // Double check with live Supabase session to prevent stale/empty profile states
+          if (!activeProfile || !activeProfile.name) {
+            const { data: sessionData } = await supabase.auth.getSession();
+            const sessionUserId = sessionData?.session?.user?.id;
+
+            if (sessionUserId) {
+              const { data: liveProfile } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', sessionUserId)
+                .maybeSingle();
+
+              if (liveProfile) {
+                activeProfile = liveProfile;
+              }
+            }
+          }
+
+          if (activeProfile && activeProfile.id) {
+            dispatch({ type: 'SET_USER', payload: activeProfile });
+            navigation.reset({ index: 0, routes: [{ name: 'lock' }] });
+          } else {
+            navigation.reset({ index: 0, routes: [{ name: 'auth' }] });
+          }
+        } catch (error) {
+          if (isMounted) {
+            navigation.reset({ index: 0, routes: [{ name: 'auth' }] });
+          }
+        }
+      };
+
+      checkAuth();
+
+      return () => {
+        isMounted = false;
+      };
+    }, [navigation, dispatch])
+  );
 
   return (
-    <LinearGradient
-      colors={['#E91E63', '#8E24AA', '#5E35B1']}
-      start={{ x: 1, y: 1 }}
-      end={{ x: 2, y: 0 }}
-      style={styles.container}
-    >
-      <StatusBar barStyle="light-content" backgroundColor="#E91E63" />
-      
-      {/* Main Content */}
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#0A0A0C" />
       <View style={styles.mainContent}>
-        
-        {/* Main Text */}
-        <View style={styles.textContainer}>
-          <Text style={styles.mainText}>you</Text>
-          <Text style={styles.mainText}>only</Text>
-          <Text style={styles.mainText}>need</Text>
-          <Text style={styles.mainText}>one</Text>
+        <View style={styles.logoBadge}>
+          <Ionicons name="sparkles" size={40} color="#7052FF" />
         </View>
-        
-        {/* YONO Logo Section */}
-        <View style={styles.logoSection}>
-          <View style={styles.logoContainer}>
-            <Image source={require('../assets/yonoLogo.png')} style={styles.logo}/>
-          </View>
-        </View>
-        
+        <Text style={styles.brandTitle}>Westcott Reserve</Text>
+        <Text style={styles.brandSubtitle}>DIGITAL PRIVATE BANKING</Text>
+        <ActivityIndicator size="small" color="#7052FF" style={{ marginTop: 24 }} />
       </View>
-      
-      {/* Bottom Section */}
-      <View style={styles.bottomSection}>
-        <View style={styles.servicesContainer}>
-          <Text style={styles.servicesText}>banking • investing • shopping</Text>
-        </View>
-        
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>Secure 256-bit Encrypted Banking Session</Text>
       </View>
-      
-    </LinearGradient>
+    </View>
   );
 };
+
+export default LoadingScreen;
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#0A0A0C',
+    justifyContent: 'space-between',
   },
   mainContent: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 40,
   },
-  textContainer: {
-    marginBottom: 60,
+  logoBadge: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(112, 82, 255, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(112, 82, 255, 0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  brandTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#F8FAFC',
+    letterSpacing: 0.5,
+  },
+  brandSubtitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#7052FF',
+    letterSpacing: 2.5,
+    marginTop: 6,
+  },
+  footer: {
+    paddingBottom: 32,
     alignItems: 'center',
   },
-mainText: {
-  fontSize: 94,
-  fontWeight: 'bold',  
-  color: '#FFFFFF',
-  lineHeight: 80,
-  letterSpacing: -1,
-  fontFamily: 'System' 
-},
-
-  logoSection: {
-    alignItems: 'center',
+  footerText: {
+    fontSize: 11,
+    color: '#64748B',
   },
-  logoContainer: {
-    borderRadius: 30,
-    alignItems: 'center',
-  },
-  logo: {
-    width: 100,
-    height: 100,
-    borderRadius: 20,
-  },
-  bottomSection: {
-    paddingHorizontal: 40,
-    paddingBottom: 50,
-    alignItems: 'center',
-  },
-  servicesContainer: {
-    marginBottom: 30,
-  },
-  servicesText: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontWeight: '300',
-    textAlign: 'center',
-  },
-
 });
-
-export default LoadingScreen;
