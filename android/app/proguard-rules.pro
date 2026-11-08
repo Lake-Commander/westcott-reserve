@@ -15,3 +15,5 @@
 -keep class expo.modules.kotlin.** { *; }
 -keep class kotlin.reflect.** { *; }
 -dontwarn kotlin.reflect.**
+-keep class expo.modules.lineargradient.** { *; }
+-keep class expo.modules.** { *; }

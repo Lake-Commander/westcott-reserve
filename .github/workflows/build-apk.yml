@@ -34,10 +34,11 @@ jobs:
       - name: Prebuild Android Project
         run: npx expo prebuild --platform android --clean
 
-      - name: Disable R8 Minification (Fix LazyKType Crash)
+      - name: Inject ProGuard Rules (Fix LazyKType Crash)
         run: |
-          sed -i 's/minifyEnabled enableMinifyInReleaseBuilds/minifyEnabled false/g' android/app/build.gradle
-          sed -i 's/shrinkResources enableShrinkResources.toBoolean()/shrinkResources false/g' android/app/build.gradle
+          echo "-keep class expo.modules.kotlin.** { *; }" >> android/app/proguard-rules.pro
+          echo "-keep class expo.modules.lineargradient.** { *; }" >> android/app/proguard-rules.pro
+          echo "-keep class expo.modules.** { *; }" >> android/app/proguard-rules.pro
 
       - name: Build Release APK
         run: |
