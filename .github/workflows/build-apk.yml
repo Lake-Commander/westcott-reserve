@@ -34,6 +34,11 @@ jobs:
       - name: Prebuild Android Project
         run: npx expo prebuild --platform android --clean
 
+      - name: Disable R8 Minification (Fix LazyKType Crash)
+        run: |
+          sed -i 's/minifyEnabled enableMinifyInReleaseBuilds/minifyEnabled false/g' android/app/build.gradle
+          sed -i 's/shrinkResources enableShrinkResources.toBoolean()/shrinkResources false/g' android/app/build.gradle
+
       - name: Build Release APK
         run: |
           cd android
