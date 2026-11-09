@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { WebAnchor } from "../components/WebAnchor";
 
-export default function WestcottWebLanding() {
+export default function WestcottWebLanding({ onLaunchApp }) {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
   const isTablet = width >= 768 && width < 1024;
@@ -34,15 +34,15 @@ export default function WestcottWebLanding() {
       {/* SECTION 1: DARK NAVY HEADER & HERO */}
       <View style={styles.sectionHeaderHero}>
         <View style={styles.boxWidth}>
-          <Navbar isDesktop={isDesktop} />
-          <Hero isDesktop={isDesktop} isTablet={isTablet} />
+          <Navbar isDesktop={isDesktop} onLaunchApp={onLaunchApp} />
+          <Hero isDesktop={isDesktop} isTablet={isTablet} onLaunchApp={onLaunchApp} />
         </View>
       </View>
 
       {/* SECTION 2: LIGHT SLATE CORE MODULES */}
       <View style={styles.sectionLightModules}>
         <View style={[styles.boxWidth, styles.paddingX]}>
-          <CoreModules isDesktop={isDesktop} />
+          <CoreModules isDesktop={isDesktop} onLaunchApp={onLaunchApp} />
         </View>
       </View>
 
@@ -63,7 +63,7 @@ export default function WestcottWebLanding() {
       {/* SECTION 5: ICE BLUE CTA BANNER */}
       <View style={styles.sectionLightCTA}>
         <View style={[styles.boxWidth, styles.paddingX]}>
-          <CTA isDesktop={isDesktop} />
+          <CTA isDesktop={isDesktop} onLaunchApp={onLaunchApp} />
         </View>
       </View>
 
@@ -81,8 +81,18 @@ export default function WestcottWebLanding() {
    SUB-COMPONENTS
    ========================================================================== */
 
+const AuthAction = ({ onLaunchApp, style, children }) => (
+  <TouchableOpacity
+    accessibilityRole="button"
+    onPress={onLaunchApp}
+    style={style}
+  >
+    {children}
+  </TouchableOpacity>
+);
+
 // 1. NAVBAR
-const Navbar = ({ isDesktop }) => {
+const Navbar = ({ isDesktop, onLaunchApp }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const navLinks = [
     { id: "accounts", title: "Foreign Accounts" },
@@ -109,9 +119,12 @@ const Navbar = ({ isDesktop }) => {
               <Text style={styles.navLinkTextDark}>{link.title}</Text>
             </WebAnchor>
           ))}
-          <WebAnchor href="#download" style={styles.navBtnPrimary}>
-            <Text style={styles.navBtnPrimaryText}>Get started — it's free</Text>
-          </WebAnchor>
+          <AuthAction onLaunchApp={onLaunchApp} style={styles.navAnchor}>
+            <Text style={[styles.navLinkTextDark, { color: "#FFFFFF", fontWeight: "700" }]}>Sign In</Text>
+          </AuthAction>
+          <AuthAction onLaunchApp={onLaunchApp} style={styles.navBtnPrimary}>
+            <Text style={styles.navBtnPrimaryText}>Create Account</Text>
+          </AuthAction>
         </View>
       ) : (
         <View style={{ position: "relative" }}>
@@ -135,6 +148,10 @@ const Navbar = ({ isDesktop }) => {
                   <Text style={styles.mobileNavText}>{link.title}</Text>
                 </WebAnchor>
               ))}
+              <View style={{ height: 1, backgroundColor: "#334155", marginVertical: 8 }} />
+              <AuthAction onLaunchApp={onLaunchApp} style={styles.mobileNavAnchor}>
+                <Text style={[styles.mobileNavText, { color: "#00F6FF" }]}>Sign In / Create Account</Text>
+              </AuthAction>
             </View>
           )}
         </View>
@@ -144,7 +161,7 @@ const Navbar = ({ isDesktop }) => {
 };
 
 // 2. HERO
-const Hero = ({ isDesktop, isTablet }) => (
+const Hero = ({ isDesktop, isTablet, onLaunchApp }) => (
   <View
     nativeID="home"
     style={[
@@ -170,11 +187,16 @@ const Hero = ({ isDesktop, isTablet }) => (
       </Text>
 
       <View style={styles.heroCtaRow}>
-        <WebAnchor href="#download" style={styles.heroPrimaryBtn}>
-          <Text style={styles.heroPrimaryBtnText}>Get started — it's free</Text>
-        </WebAnchor>
-        <WebAnchor href="#accounts" style={styles.heroSecondaryBtn}>
-          <Text style={styles.heroSecondaryBtnText}>Explore Accounts</Text>
+        <AuthAction onLaunchApp={onLaunchApp} style={styles.heroPrimaryBtn}>
+          <Text style={styles.heroPrimaryBtnText}>Create free account</Text>
+        </AuthAction>
+        <AuthAction onLaunchApp={onLaunchApp} style={styles.heroSecondaryBtn}>
+          <Text style={styles.heroSecondaryBtnText}>Sign In</Text>
+        </AuthAction>
+        <WebAnchor href="#download" style={{ marginLeft: 8 }}>
+          <Text style={{ color: "#94A3B8", fontSize: 14, fontWeight: "600", textDecorationLine: "underline" }}>
+            or download APK
+          </Text>
         </WebAnchor>
       </View>
     </View>
@@ -241,7 +263,7 @@ const Hero = ({ isDesktop, isTablet }) => (
 );
 
 // 3. CORE MODULES
-const CoreModules = ({ isDesktop }) => {
+const CoreModules = ({ isDesktop, onLaunchApp }) => {
   const modules = [
     {
       id: "accounts",
@@ -301,9 +323,9 @@ const CoreModules = ({ isDesktop }) => {
               <Text style={styles.heading2Light}>{mod.title}</Text>
               <Text style={styles.paragraphLight}>{mod.desc}</Text>
 
-              <WebAnchor href="#download" style={[styles.modulePrimaryBtn, { marginTop: 20 }]}>
+              <AuthAction onLaunchApp={onLaunchApp} style={[styles.modulePrimaryBtn, { marginTop: 20 }]}>
                 <Text style={styles.modulePrimaryBtnText}>{mod.btnText}</Text>
-              </WebAnchor>
+              </AuthAction>
             </View>
 
             <View
@@ -423,7 +445,7 @@ const MobileAppSection = ({ isDesktop }) => (
 );
 
 // 6. CTA BANNER
-const CTA = ({ isDesktop }) => (
+const CTA = ({ isDesktop, onLaunchApp }) => (
   <View style={[styles.ctaBannerLight, !isDesktop && { flexDirection: "column", gap: 20 }]}>
     <View style={{ flex: 1 }}>
       <Text style={styles.ctaTitleLight}>Ready to experience modern banking?</Text>
@@ -431,9 +453,9 @@ const CTA = ({ isDesktop }) => (
         Create your free multi-currency reserve account today in under 3 minutes.
       </Text>
     </View>
-    <WebAnchor href="#download" style={styles.modulePrimaryBtn}>
-      <Text style={styles.modulePrimaryBtnText}>Get started — it's free</Text>
-    </WebAnchor>
+    <AuthAction onLaunchApp={onLaunchApp} style={styles.modulePrimaryBtn}>
+      <Text style={styles.modulePrimaryBtnText}>Create Account</Text>
+    </AuthAction>
   </View>
 );
 

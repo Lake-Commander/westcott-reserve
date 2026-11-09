@@ -29,24 +29,50 @@ jobs:
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || yes | $ANDROID_HOME/tools/bin/sdkmanager --licenses || true
 
       - name: Install Dependencies
-        run: npm ci || npm install
+        run: npm ci
 
-      - name: Prebuild Android Project
-        run: npx expo prebuild --platform android --clean
-
-      - name: Inject ProGuard Rules (Fix LazyKType Crash)
+      - name: Verify Production Signing Secrets
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          echo "-keep class expo.modules.kotlin.** { *; }" >> android/app/proguard-rules.pro
-          echo "-keep class kotlin.reflect.** { *; }" >> android/app/proguard-rules.pro
-          echo "-dontwarn kotlin.reflect.**" >> android/app/proguard-rules.pro
-          echo "-keep class expo.modules.lineargradient.** { *; }" >> android/app/proguard-rules.pro
-          echo "-keep class expo.modules.** { *; }" >> android/app/proguard-rules.pro
+          test -n "$ANDROID_KEYSTORE_BASE64" || { echo "Missing ANDROID_KEYSTORE_BASE64 repository secret"; exit 1; }
+          test -n "$ANDROID_KEYSTORE_PASSWORD" || { echo "Missing ANDROID_KEYSTORE_PASSWORD repository secret"; exit 1; }
+          test -n "$ANDROID_KEY_ALIAS" || { echo "Missing ANDROID_KEY_ALIAS repository secret"; exit 1; }
+          test -n "$ANDROID_KEY_PASSWORD" || { echo "Missing ANDROID_KEY_PASSWORD repository secret"; exit 1; }
+
+      - name: Prepare Production Keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/westcott-release.p12"
+          chmod 600 "$RUNNER_TEMP/westcott-release.p12"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/westcott-release.p12" >> "$GITHUB_ENV"
 
       - name: Build Release APK
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
+          test -n "$EXPO_PUBLIC_SUPABASE_URL" || { echo "Missing EXPO_PUBLIC_SUPABASE_URL repository secret"; exit 1; }
+          test -n "$EXPO_PUBLIC_SUPABASE_ANON_KEY" || { echo "Missing EXPO_PUBLIC_SUPABASE_ANON_KEY repository secret"; exit 1; }
+          test -s "$ANDROID_KEYSTORE_PATH" || { echo "Production keystore was not prepared"; exit 1; }
+          chmod +x android/gradlew
+          ./android/gradlew -p android :app:assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
+
+      - name: Verify Standalone APK
+        run: |
+          apk_path=android/app/build/outputs/apk/release/app-release.apk
+          test -s "$apk_path"
+          unzip -l "$apk_path" | grep -q 'assets/index.android.bundle'
+          apksigner_path=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner -print -quit)
+          test -n "$apksigner_path" || { echo "Android apksigner tool was not found"; exit 1; }
+          "$apksigner_path" verify "$apk_path"
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4

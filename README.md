@@ -1,184 +1,142 @@
-# YONO SBI React Native Clone
+# Westcott Reserve
 
-A modern React Native app inspired by the YONO by SBI mobile banking experience.  
-This project aims to replicate the look, feel, and core features of the official YONO app, including authentication, balance display, transactions, quick actions, and more.
+Westcott Reserve is an educational digital-banking simulation built with React
+Native and Expo. It demonstrates a banking-style mobile experience, including
+account access, dashboard and account screens, transaction history, transfers,
+cards, settings, and a responsive web landing page. It is a prototype only: it is
+not a bank, and it does not conduct real financial transactions.
 
----
+## Features
 
-## 🚀 Features
+- React Native app for Android and iOS, with a web landing page.
+- Email/password authentication and account profile data backed by Supabase.
+- Persistent session storage on mobile.
+- Home, cards, history, profile, transfers, bill payment, savings, and account
+  settings screens.
+- Redux-based app state and theme support.
+- Landing-page sign-in and account actions enter the app's existing authentication
+  flow.
 
-- **Beautiful Onboarding & Login**
-  - Login using username/password or 4-digit MPIN
-  - Demo credentials provided for easy access
+## Requirements
 
-- **Redux State Management**
-  - User authentication, theme (dark/light), and transactions are managed with Redux for robust state handling
+- Node.js 20
+- npm
+- Android Studio/Android SDK and Java 17 for local Android builds
+- A Supabase project for configured authentication and profile storage
 
-- **Home & Lock Screens**
-  - Modern, card-based UI for balance, quick pay, and services
-  - Recent transactions and account summary
-  - Quick actions for common banking tasks
+## Local setup
 
-- **Theming**
-  - Light and dark mode support (toggle via Redux, just a few style changes needed for full dark mode)
+1. Install dependencies:
 
-- **API Integration**
-  - Transactions fetched from a mock API (can be replaced with a real backend)
+   ```sh
+   npm ci
+   ```
 
-- **Componentized UI**
-  - Reusable components for header, cards, and actions
+2. Create a `.env` file in the repository root with your Supabase project URL and
+   client key:
 
-- **Easy Customization**
-  - All demo user data and credentials are in Redux and can be changed for future needs
+   ```dotenv
+   EXPO_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+   EXPO_PUBLIC_SUPABASE_ANON_KEY=YOUR_SUPABASE_PUBLISHABLE_OR_ANON_KEY
+   ```
 
----
+   Replace the placeholders with the URL and publishable/anon client key from your
+   Supabase project. Do not put a Supabase `service_role` key, database password,
+   or other server-side secret in this file. Expo embeds `EXPO_PUBLIC_*` values in
+   the client app, so they are visible to users; protect data with Supabase Row
+   Level Security (RLS) policies.
 
-## 🧑 Demo User Credentials
+   `.env` is ignored by Git and should remain local. Do not commit it. The Android
+   GitHub Actions workflow gets the two Supabase values from repository Actions
+   secrets instead.
 
-> Use these credentials to log in and explore the app:
+3. Start the app:
 
-- **Username:** `demoUser`
-- **Password:** `demoUser`
-- **MPIN:** `0000`
+   ```sh
+   npm start
+   ```
 
-You can change these in `redux/userReducer.js` under the `initialState.user` object.
+   Use the Expo CLI to open the app on a device/emulator, or run `npm run web` for
+   the web experience.
 
----
+## Android APK
 
+The repository includes its Android native project. The Android workflow builds
+from those checked-in files directly; it does not run `expo prebuild --clean`.
+The Expo configuration and SDK-compatible dependencies were updated for reliable
+native builds, including the splash-screen and font setup. The release Gradle
+variant embeds the JavaScript bundle, so the APK runs without a Metro server.
 
-## 🛠️ Tech Stack
+### GitHub Actions build
 
-- **React Native** (Expo)
-- **Redux** for state management
-- **Redux Thunk** (if async actions are used)
-- **React Navigation** (if navigation is present)
-- **Mock API** for transactions
+The workflow is manually triggered at **Actions → Build Android Release APK →
+Run workflow**. Add these repository secrets under **Settings → Secrets and
+variables → Actions**:
 
----
+- `EXPO_PUBLIC_SUPABASE_URL`
+- `EXPO_PUBLIC_SUPABASE_ANON_KEY`
+- `ANDROID_KEYSTORE_BASE64`
+- `ANDROID_KEYSTORE_PASSWORD`
+- `ANDROID_KEY_ALIAS`
+- `ANDROID_KEY_PASSWORD`
 
-## 🧪 Mock API for Transactions
+Create a new production signing key locally and keep it private:
 
-This project uses a public mock REST API to fetch transaction data.
-
-**API Endpoint (GET):**
-```
-https://686cc7b514219674dcc916e6.mockapi.io/api/transactions
-```
-
-**Sample Response:**
-```json
-[
-  {
-    "transaction": 37,
-    "receiver": "Pablo Hessel",
-    "mode": "invoice",
-    "timestamp": 1751965441,
-    "referenceId": "493148126",
-    "id": "1"
-  },
-  {
-    "transaction": 1000,
-    "receiver": "John Doe",
-    "mode": "deposit",
-    "timestamp": 1751965442,
-    "referenceId": "493148127",
-    "id": "2"
-  }
-  // ...more transactions
-]
-```
-
-**Fields:**
-- `transaction`: Amount of the transaction (number)
-- `receiver`: Name of the receiver (string)
-- `mode`: Type of transaction, e.g. `"deposit"`, `"invoice"`, etc. (string)
-- `timestamp`: Unix timestamp of the transaction (number)
-- `referenceId`: Reference ID for the transaction (string)
-- `id`: Unique transaction ID (string)
-
-**Usage:**
-- The app fetches this endpoint to display recent transactions and calculate the account balance.
-- You can modify or extend this API for your own backend or use [mockapi.io](https://mockapi.io/) to create more endpoints.
-
----
-
----
-
-## 🗂️ Project Structure
-
-```
-myBank/
-├── App.js
-├── components/
-│   └── Header.js
-├── redux/
-│   ├── action.js
-│   ├── constant.js
-│   ├── rootReducer.js
-│   ├── store.js
-│   ├── themeReducer.js
-│   └── userReducer.js
-├── screens/
-│   ├── homeScreen.js
-│   ├── loadingScreen.js
-│   └── lockScreen.js
-├── assets/
-│   └── (images/icons)
-└── ...
+```sh
+keytool -genkeypair -v -storetype PKCS12 -keystore westcott-release.p12 \
+  -alias westcott-release -keyalg RSA -keysize 2048 -validity 10000
 ```
 
----
+Use the alias and passwords entered during key creation for the matching GitHub
+secrets. Encode the keystore as a single-line Base64 value for
+`ANDROID_KEYSTORE_BASE64`:
 
-## 🎨 Theming
+```sh
+base64 -w 0 westcott-release.p12
+```
 
-- The app supports dark and light modes.
-- The theme state is managed in Redux (`themeReducer.js`).
-- Toggle `isDarkMode` in Redux to switch themes.  
-  (Just a few style changes needed to fully support dark mode.)
+On macOS, use `base64 < westcott-release.p12 | tr -d '\n'`. Never commit or share
+the keystore or its passwords. Keep a secure backup: all future app updates must
+be signed with the same key. This new production key will not update installations
+signed with the debug key.
 
----
+The workflow builds an ARM64 and ARMv7 release APK, verifies that it contains the
+embedded JavaScript bundle and has a valid APK signature, then uploads it as the
+`WestcottReserve-Release-APK` workflow artifact. It fails if required secrets are
+missing.
 
-## 🔄 Extensibility
+### Local production build
 
-- **User Data:**  
-  Change the default user in `redux/userReducer.js` for new demo accounts.
-- **Transactions:**  
-  Point the API to your own backend or mock server.
-- **Theming:**  
-  Expand the style objects to support full dark/light mode.
-- **Features:**  
-  Add more screens, services, and banking features as needed.
+For a local production build, export the Supabase variables above and the
+production signing settings below. Keep the keystore outside the repository:
 
----
+```sh
+export ANDROID_KEYSTORE_PATH=/absolute/path/to/westcott-release.p12
+export ANDROID_KEYSTORE_PASSWORD='your-keystore-password'
+export ANDROID_KEY_ALIAS='westcott-release'
+export ANDROID_KEY_PASSWORD='your-key-password'
 
-## 📝 How to Run
+./android/gradlew -p android :app:assembleRelease \
+  -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
+```
 
-1. Clone the repo
-2. Run `npm install`
-3. Start with `npm start` or `expo start`
-4. Use the demo credentials above to log in
+The APK is written to
+`android/app/build/outputs/apk/release/app-release.apk`. Release builds require
+production signing credentials and will not silently use the debug key. Install
+on a connected Android device with:
 
----
+```sh
+adb install -r android/app/build/outputs/apk/release/app-release.apk
+```
 
-## 🙏 Credits
+## Security and configuration notes
 
-This project is a personal learning/portfolio project and is not affiliated with SBI or YONO.  
-All icons and images are for demonstration purposes only.
-
----
-
-
-
----
-
-
-## 📸 Screenshots
-
-<div style="display: flex; flex-wrap: wrap; gap: 4px;">
-  <img src="https://github.com/user-attachments/assets/708a8550-fa36-41c4-a1db-63339c927d7c" width="16.6%"/>
-  <img src="https://github.com/user-attachments/assets/6deddac8-e534-4125-9a26-44afe295069e" width="16.6%"/>
-  <img src="https://github.com/user-attachments/assets/94401075-51c8-432f-b7f2-23f78d39681c" width="16.6%"/>
-  <img src="https://github.com/user-attachments/assets/99715f14-d9a2-4e0c-b74d-6967536f7feb" width="16.6%"/>
-  <img src="https://github.com/user-attachments/assets/bed6b0f9-847c-4242-b6ae-c101daa442c5" width="16.6%"/>
-  <img src="https://github.com/user-attachments/assets/b4c8bfcf-84d7-46b3-9f8f-ccf8e5e7883b" width="16.6%"/>
-</div>
+- Keep `.env`, keystores, passwords, and other private credentials out of Git.
+- `EXPO_PUBLIC_*` values are client-side configuration, not private secrets.
+- Never use a Supabase service-role key in the app; use the publishable/anon key
+  with appropriate RLS policies.
+- Removing `.env` from the current Git version does not erase it from older Git
+  history. If it contained a credential that should not have been public, rotate
+  that credential and consider removing it from repository history.
+- The app is for educational and prototype use only. Do not use it to manage real
+  money or sensitive financial accounts.
