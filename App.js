@@ -9,6 +9,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppTheme } from "./hooks/useAppTheme";
 
 import WebLandingScreen from "./screens/webLandingScreen";
+import AdminPanelScreen from "./screens/adminPanelScreen";
+import NotificationsScreen from "./screens/notificationsScreen";
+import FeatureGate from "./components/FeatureGate";
 
 import LoadingScreen from "./screens/loadingScreen";
 import AuthScreen from "./screens/authScreen";
@@ -49,6 +52,46 @@ const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 const EmptyCenterScreen = () => null;
+const CardsScreenWithGate = (props) => (
+  <FeatureGate featureKey="cards">
+    <CardsScreen {...props} />
+  </FeatureGate>
+);
+const SavingsScreenWithGate = (props) => (
+  <FeatureGate featureKey="savings">
+    <SavingsScreen {...props} />
+  </FeatureGate>
+);
+const PayBillsScreenWithGate = (props) => (
+  <FeatureGate featureKey="bill_payments">
+    <PayBillsScreen {...props} />
+  </FeatureGate>
+);
+const TransferMenuScreenWithGate = (props) => (
+  <FeatureGate featureKey="transfers">
+    <TransferMenuScreen {...props} />
+  </FeatureGate>
+);
+const TransferUsernameScreenWithGate = (props) => (
+  <FeatureGate featureKey="transfers">
+    <TransferUsernameScreen {...props} />
+  </FeatureGate>
+);
+const TransferBankScreenWithGate = (props) => (
+  <FeatureGate featureKey="transfers">
+    <TransferBankScreen {...props} />
+  </FeatureGate>
+);
+const SelectBankScreenWithGate = (props) => (
+  <FeatureGate featureKey="transfers">
+    <SelectBankScreen {...props} />
+  </FeatureGate>
+);
+const TransferSuccessScreenWithGate = (props) => (
+  <FeatureGate featureKey="transfers">
+    <TransferSuccessScreen {...props} />
+  </FeatureGate>
+);
 
 const MainTabs = () => {
   const [menuVisible, setMenuVisible] = useState(false);
@@ -72,7 +115,7 @@ const MainTabs = () => {
               paddingBottom: bottomInset,
             },
           ],
-          tabBarActiveTintColor: "#7052FF",
+          tabBarActiveTintColor: theme.accent,
           tabBarInactiveTintColor: theme.textMuted,
           tabBarLabelStyle: styles.tabBarLabel,
           tabBarIcon: ({ color, size, focused }) => {
@@ -87,7 +130,7 @@ const MainTabs = () => {
         })}
       >
         <Tab.Screen name="Home" component={HomeScreen} />
-        <Tab.Screen name="Cards" component={CardsScreen} />
+        <Tab.Screen name="Cards" component={CardsScreenWithGate} />
 
         {/* Center Floating Button */}
         <Tab.Screen
@@ -97,7 +140,10 @@ const MainTabs = () => {
             tabBarLabel: () => null,
             tabBarButton: () => (
               <TouchableOpacity
-                style={[styles.floatingCenterBtn, { bottom: bottomInset + 10 }]}
+                style={[
+                  styles.floatingCenterBtn,
+                  { bottom: bottomInset + 10, backgroundColor: theme.accent, shadowColor: theme.accent },
+                ]}
                 onPress={() => setMenuVisible(true)}
                 activeOpacity={0.8}
               >
@@ -121,6 +167,14 @@ const MainTabs = () => {
 const App = () => {
   const [showAppOnWeb, setShowAppOnWeb] = useState(false);
 
+  if (
+    Platform.OS === "web" &&
+    typeof window !== "undefined" &&
+    window.location.pathname.replace(/\/+$/, "") === "/admin"
+  ) {
+    return <AdminPanelScreen />;
+  }
+
   // Serve landing page ONLY on Web platform before launching app console
   if (Platform.OS === 'web' && !showAppOnWeb) {
     return <WebLandingScreen onLaunchApp={() => setShowAppOnWeb(true)} />;
@@ -134,6 +188,7 @@ const App = () => {
         <Stack.Screen name="forgotPassword" component={ForgotPasswordScreen} />
         <Stack.Screen name="lock" component={LockScreen} />
         <Stack.Screen name="home" component={MainTabs} />
+        <Stack.Screen name="notifications" component={NotificationsScreen} />
         <Stack.Screen name="personalInfo" component={PersonalInfoScreen} />
         <Stack.Screen name="preferences" component={PreferencesScreen} />
 
@@ -150,16 +205,16 @@ const App = () => {
         <Stack.Screen name="termsConditions" component={TermsConditionsScreen} />
 
         {/* Homepage Feature Stack */}
-        <Stack.Screen name="payBills" component={PayBillsScreen} />
-        <Stack.Screen name="savings" component={SavingsScreen} />
+        <Stack.Screen name="payBills" component={PayBillsScreenWithGate} />
+        <Stack.Screen name="savings" component={SavingsScreenWithGate} />
         <Stack.Screen name="globalAccounts" component={GlobalAccountsScreen} />
 
         {/* Transfer Stack */}
-        <Stack.Screen name="transferMenu" component={TransferMenuScreen} />
-        <Stack.Screen name="transferUsername" component={TransferUsernameScreen} />
-        <Stack.Screen name="transferBank" component={TransferBankScreen} />
-        <Stack.Screen name="selectBank" component={SelectBankScreen} />
-        <Stack.Screen name="transferSuccess" component={TransferSuccessScreen} />
+        <Stack.Screen name="transferMenu" component={TransferMenuScreenWithGate} />
+        <Stack.Screen name="transferUsername" component={TransferUsernameScreenWithGate} />
+        <Stack.Screen name="transferBank" component={TransferBankScreenWithGate} />
+        <Stack.Screen name="selectBank" component={SelectBankScreenWithGate} />
+        <Stack.Screen name="transferSuccess" component={TransferSuccessScreenWithGate} />
       </Stack.Navigator>
     </NavigationContainer>
   );

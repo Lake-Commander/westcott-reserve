@@ -15,6 +15,7 @@ import { useSelector } from "react-redux";
 import { Ionicons } from "@expo/vector-icons";
 import Header from "../components/Header";
 import { SandboxBankApi, INSTITUTIONS } from "../services/sandboxBankApi";
+import MpinVerificationModal from "../components/MpinVerificationModal";
 
 const TransfersScreen = ({ navigation }) => {
   const { theme, isDark } = useAppTheme();
@@ -27,6 +28,7 @@ const TransfersScreen = ({ navigation }) => {
   const [amount, setAmount] = useState("");
   const [narration, setNarration] = useState("");
   const [loading, setLoading] = useState(false);
+  const [mpinPromptVisible, setMpinPromptVisible] = useState(false);
 
   // Auto-resolve beneficiary when user finishes typing
   const handleAccountChange = async (text) => {
@@ -45,18 +47,29 @@ const TransfersScreen = ({ navigation }) => {
     }
   };
 
-  const handleSend = async () => {
+  const handleSend = () => {
     const parsedAmount = parseFloat(amount);
     if (!accountNumber.trim() || isNaN(parsedAmount) || parsedAmount <= 0) {
       Alert.alert("Invalid Input", "Please provide a valid account number and amount.");
       return;
     }
 
-    if (user?.balance !== undefined && parsedAmount > user.balance) {
+    if (!user?.id) {
+      Alert.alert("Sign In Required", "Please sign in again before making a transfer.");
+      return;
+    }
+
+    if (user?.balance !== undefined && parsedAmount > parseFloat(user.balance)) {
       Alert.alert("Insufficient Balance", "Your account does not have sufficient funds for this wire.");
       return;
     }
 
+    setMpinPromptVisible(true);
+  };
+
+  const executeTransfer = async () => {
+    if (loading) return;
+    const parsedAmount = parseFloat(amount);
     setLoading(true);
     try {
       const res = await SandboxBankApi.executeTransfer({
@@ -158,6 +171,18 @@ const TransfersScreen = ({ navigation }) => {
           )}
         </TouchableOpacity>
       </ScrollView>
+      <MpinVerificationModal
+        visible={mpinPromptVisible}
+        userId={user?.id}
+        theme={theme}
+        recipient={resolvedName || `Account ending ${accountNumber.trim().slice(-4)}`}
+        amount={Number.isFinite(parseFloat(amount)) ? parseFloat(amount).toFixed(2) : ""}
+        onCancel={() => setMpinPromptVisible(false)}
+        onVerified={() => {
+          setMpinPromptVisible(false);
+          executeTransfer();
+        }}
+      />
     </ScreenWrapper>
   );
 };

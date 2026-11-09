@@ -17,12 +17,15 @@ import { BankService } from "../services/bankService";
 import { supabase } from "../services/supabaseClient";
 import ScreenWrapper from "../components/ScreenWrapper";
 import { useAppTheme } from "../hooks/useAppTheme";
+import { useAppUIConfig } from "../components/AppUIConfigProvider";
+import { UI_ACTION_BY_ID } from "../services/appUiConfig";
 
 const HomeScreen = ({ navigation }) => {
   const dispatch = useDispatch();
   const reduxUser = useSelector((state) => state.userReducer?.user);
   
   const { theme, isDark } = useAppTheme();
+  const { config } = useAppUIConfig();
 
   const [user, setUser] = useState(reduxUser || null);
   const [balance, setBalance] = useState(reduxUser?.balance || 250000.0);
@@ -151,13 +154,20 @@ const HomeScreen = ({ navigation }) => {
     }).format(val || 0);
   };
 
+  const navigateToAction = (actionId) => {
+    const action = UI_ACTION_BY_ID[actionId];
+    if (action) navigation.navigate(action.route);
+  };
+
+  const homeActions = config.home.quickActions.filter((action) => action.enabled);
+
   return (
     <ScreenWrapper>
       {/* Top Header */}
       <View style={[styles.headerBar, { borderBottomColor: theme.cardBorder }]}>
         <View style={styles.headerLeft}>
           <TouchableOpacity
-            style={styles.avatarCircle}
+            style={[styles.avatarCircle, { backgroundColor: theme.accent }]}
             onPress={() => navigation.navigate("personalInfo")}
             activeOpacity={0.7}
           >
@@ -185,7 +195,7 @@ const HomeScreen = ({ navigation }) => {
 
           <TouchableOpacity
             style={[styles.headerIconBtn, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}
-            onPress={() => Alert.alert("Notifications", "No unread alerts.")}
+            onPress={() => navigation.navigate("notifications")}
             activeOpacity={0.7}
           >
             <Ionicons name="notifications-outline" size={19} color={theme.textPrimary} />
@@ -199,9 +209,35 @@ const HomeScreen = ({ navigation }) => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#7052FF" />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.accent} />
         }
       >
+        {config.home.heroEnabled && (
+          <View style={[styles.remoteBanner, { backgroundColor: theme.accent }]}>
+            <View style={styles.remoteBannerCopy}>
+              <Text style={styles.remoteBannerEyebrow}>A NOTE FROM WESTCOTT</Text>
+              <Text style={styles.remoteBannerTitle}>{config.home.heroTitle}</Text>
+              <Text style={styles.remoteBannerDescription}>{config.home.heroSubtitle}</Text>
+              {config.home.heroAction !== "none" && (
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  style={styles.remoteBannerButton}
+                  onPress={() => navigateToAction(config.home.heroAction)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.remoteBannerButtonText, { color: theme.accent }]}>
+                    {config.home.heroButtonLabel}
+                  </Text>
+                  <Ionicons name="arrow-forward" size={15} color={theme.accent} />
+                </TouchableOpacity>
+              )}
+            </View>
+            <View style={styles.remoteBannerDecoration}>
+              <Ionicons name="sparkles" size={24} color="rgba(255,255,255,0.82)" />
+            </View>
+          </View>
+        )}
+
         {/* Main Balance Card */}
         <View style={[styles.balanceCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
           <View style={styles.balanceTopRow}>
@@ -252,55 +288,37 @@ const HomeScreen = ({ navigation }) => {
               onPress={() => navigation.navigate("transferMenu")}
               activeOpacity={0.7}
             >
-              <Text style={[styles.actionBtnText, { color: "#FFFFFF" }]}>Send ↗</Text>
+              <Text style={[styles.actionBtnText, { color: "#FFFFFF" }]}>Transfer ↗</Text>
             </TouchableOpacity>
           </View>
         </View>
 
         {/* 4 Feature Circles Row */}
-        <View style={[styles.quickServicesCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-          <View style={styles.servicesGrid}>
-            <TouchableOpacity
-              style={styles.quickItem}
-              onPress={() => Alert.alert("Coming Soon", "Sabistok Stock Trading & Investments will launch in the next update.")}
-            >
-              <View style={[styles.quickIconCircle, { backgroundColor: "rgba(139, 92, 246, 0.15)" }]}>
-                <Ionicons name="trending-up" size={20} color="#8B5CF6" />
-              </View>
-              <Text style={[styles.quickItemLabel, { color: theme.textSecondary }]}>Stocks</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickItem}
-              onPress={() => navigation.navigate("payBills")}
-            >
-              <View style={[styles.quickIconCircle, { backgroundColor: "rgba(245, 158, 11, 0.15)" }]}>
-                <Ionicons name="flash" size={20} color="#F59E0B" />
-              </View>
-              <Text style={[styles.quickItemLabel, { color: theme.textSecondary }]}>Pay Bills</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickItem}
-              onPress={() => navigation.navigate("savings")}
-            >
-              <View style={[styles.quickIconCircle, { backgroundColor: "rgba(236, 72, 153, 0.15)" }]}>
-                <Ionicons name="shield-checkmark" size={20} color="#EC4899" />
-              </View>
-              <Text style={[styles.quickItemLabel, { color: theme.textSecondary }]}>Savings</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickItem}
-              onPress={() => navigation.navigate("globalAccounts")}
-            >
-              <View style={[styles.quickIconCircle, { backgroundColor: "rgba(16, 185, 129, 0.15)" }]}>
-                <Ionicons name="globe" size={20} color="#10B981" />
-              </View>
-              <Text style={[styles.quickItemLabel, { color: theme.textSecondary }]}>Global</Text>
-            </TouchableOpacity>
+        {homeActions.length > 0 && (
+          <View style={[styles.quickServicesCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
+            <View style={styles.servicesGrid}>
+              {homeActions.map((item) => {
+                const action = UI_ACTION_BY_ID[item.id];
+                if (!action) return null;
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={styles.quickItem}
+                    onPress={() => navigateToAction(item.id)}
+                    activeOpacity={0.75}
+                  >
+                    <View style={[styles.quickIconCircle, { backgroundColor: theme.accentSoft }]}>
+                      <Ionicons name={action.icon} size={20} color={theme.accent} />
+                    </View>
+                    <Text style={[styles.quickItemLabel, { color: theme.textSecondary }]} numberOfLines={1}>
+                      {item.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
-        </View>
+        )}
 
         {/* Product Carousel */}
         <Text style={[styles.sectionHeading, { color: theme.textPrimary }]}>Financial Products</Text>
@@ -310,10 +328,10 @@ const HomeScreen = ({ navigation }) => {
             activeOpacity={0.8}
             onPress={() => navigation.navigate("globalAccounts")}
           >
-            <View style={styles.productBadge}>
-              <Text style={styles.productBadgeText}>GLOBAL FX</Text>
+            <View style={[styles.productBadge, { backgroundColor: theme.accentSoft }]}>
+              <Text style={[styles.productBadgeText, { color: theme.accent }]}>GLOBAL FX</Text>
             </View>
-            <Ionicons name="globe-outline" size={28} color="#7052FF" style={{ marginVertical: 8 }} />
+            <Ionicons name="globe-outline" size={28} color={theme.accent} style={{ marginVertical: 8 }} />
             <Text style={[styles.productCardTitle, { color: theme.textPrimary }]}>USD & EUR Accounts</Text>
             <Text style={[styles.productCardSub, { color: theme.textSecondary }]}>
               Receive direct international wires from clients and platforms worldwide.
@@ -352,6 +370,7 @@ const HomeScreen = ({ navigation }) => {
         </ScrollView>
 
         {/* Promo Banner */}
+        {config.home.promoEnabled && (
         <View style={[styles.promoBanner, { backgroundColor: isDark ? "#18142E" : "#F8FAFC", borderColor: isDark ? "#292150" : "#CBD5E1" }]}>
           <View style={styles.promoTagRow}>
             <View style={[styles.promoBadge, { backgroundColor: "rgba(245, 158, 11, 0.15)" }]}>
@@ -360,17 +379,21 @@ const HomeScreen = ({ navigation }) => {
             </View>
             <Text style={[styles.promoExpText, { color: theme.textSecondary }]}>Expires in 4 days</Text>
           </View>
-          <Text style={[styles.promoTitle, { color: theme.textPrimary }]}>Earn up to 30% Return Upfront</Text>
+          <Text style={[styles.promoTitle, { color: theme.textPrimary }]}>{config.home.promoTitle}</Text>
           <Text style={[styles.promoDesc, { color: theme.textSecondary }]}>
-            Save with Westcott Wealth Reserve this quarter and lock in guaranteed fixed interest.
+            {config.home.promoDescription}
           </Text>
           <View style={styles.promoActionsRow}>
-            <TouchableOpacity
-              style={[styles.promoWhiteBtn, { backgroundColor: isDark ? "#FFFFFF" : "#E2E8F0" }]}
-              onPress={() => navigation.navigate("savings")}
-            >
-              <Text style={[styles.promoWhiteBtnText, { color: "#0A0A0C" }]}>View Plans</Text>
-            </TouchableOpacity>
+            {config.home.promoAction !== "none" && (
+              <TouchableOpacity
+                style={[styles.promoWhiteBtn, { backgroundColor: theme.accent }]}
+                onPress={() => navigateToAction(config.home.promoAction)}
+              >
+                <Text style={[styles.promoWhiteBtnText, { color: "#FFFFFF" }]}>
+                  {config.home.promoButtonLabel}
+                </Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               style={[styles.promoDarkBtn, { backgroundColor: isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(15, 23, 42, 0.08)" }]}
               onPress={() => navigation.navigate("termsConditions")}
@@ -379,13 +402,14 @@ const HomeScreen = ({ navigation }) => {
             </TouchableOpacity>
           </View>
         </View>
+        )}
 
         {/* Recent Activity */}
         <View style={[styles.txCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
           <View style={styles.txHeaderRow}>
             <Text style={[styles.txCardTitle, { color: theme.textPrimary }]}>Recent Activity</Text>
             <TouchableOpacity onPress={() => navigation.navigate("History")} activeOpacity={0.7}>
-              <Text style={styles.seeAllText}>See All ↗</Text>
+              <Text style={[styles.seeAllText, { color: theme.accent }]}>See All ↗</Text>
             </TouchableOpacity>
           </View>
 
@@ -457,12 +481,12 @@ const HomeScreen = ({ navigation }) => {
               activeOpacity={0.7}
             >
               <Text style={{ color: theme.textMuted, fontSize: 11, fontWeight: "700" }}>WESTCOTT ACCOUNT NUMBER</Text>
-              <Text style={styles.receiveAccNum}>{accountNumberDisplay}</Text>
+              <Text style={[styles.receiveAccNum, { color: theme.accent }]}>{accountNumberDisplay}</Text>
               <Text style={{ color: theme.textPrimary, fontSize: 13, fontWeight: "600" }}>{displayName}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.modalSubmitBtn}
+              style={[styles.modalSubmitBtn, { backgroundColor: theme.accent }]}
               onPress={async () => {
                 await handleCopyAccount();
                 setReceiveModalVisible(false);
@@ -550,6 +574,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 110,
   },
+  remoteBanner: {
+    flexDirection: "row",
+    minHeight: 160,
+    overflow: "hidden",
+    borderRadius: 20,
+    padding: 20,
+    marginTop: 16,
+    marginBottom: 14,
+  },
+  remoteBannerCopy: { flex: 1, alignItems: "flex-start", gap: 7 },
+  remoteBannerEyebrow: { color: "rgba(255,255,255,0.78)", fontSize: 10, fontWeight: "800", letterSpacing: 1.1 },
+  remoteBannerTitle: { color: "#FFFFFF", fontSize: 21, fontWeight: "800", lineHeight: 27 },
+  remoteBannerDescription: { color: "rgba(255,255,255,0.88)", fontSize: 12, lineHeight: 18 },
+  remoteBannerButton: { backgroundColor: "#FFFFFF", minHeight: 36, flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 12, borderRadius: 18, marginTop: 5 },
+  remoteBannerButtonText: { fontSize: 12, fontWeight: "800" },
+  remoteBannerDecoration: { width: 42, alignItems: "flex-end", justifyContent: "flex-start" },
   balanceCard: {
     borderRadius: 20,
     padding: 20,
@@ -615,11 +655,13 @@ const styles = StyleSheet.create({
   },
   servicesGrid: {
     flexDirection: "row",
+    flexWrap: "wrap",
     justifyContent: "space-around",
+    rowGap: 16,
   },
   quickItem: {
     alignItems: "center",
-    width: "22%",
+    width: "23%",
   },
   quickIconCircle: {
     width: 48,

@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { BankService } from '../services/bankService';
 import ScreenWrapper from '../components/ScreenWrapper';
 import { useAppTheme } from '../hooks/useAppTheme';
+import MpinVerificationModal from '../components/MpinVerificationModal';
 
 const TransferBankScreen = ({ navigation, route }) => {
   const currentUser = useSelector((state) => state.userReducer?.user);
@@ -31,6 +32,7 @@ const TransferBankScreen = ({ navigation, route }) => {
   const [verifyStatus, setVerifyStatus] = useState('idle');
   const [resolvedName, setResolvedName] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [mpinPromptVisible, setMpinPromptVisible] = useState(false);
 
   useEffect(() => {
     if (route?.params?.selectedBeneficiary) {
@@ -117,6 +119,14 @@ const TransferBankScreen = ({ navigation, route }) => {
       Alert.alert('Invalid Amount', 'Please enter a valid transfer amount.');
       return;
     }
+    if (!currentUser?.id) {
+      Alert.alert('Sign In Required', 'Please sign in again before making a transfer.');
+      return;
+    }
+    if (numAmt > currentBalance) {
+      Alert.alert('Insufficient Balance', 'Your available balance cannot complete this transaction.');
+      return;
+    }
 
     setSubmitting(true);
     const idempotencyKey = `wr_bank_${currentUser?.id?.slice(0, 8)}_${Date.now()}_${Math.floor(
@@ -182,18 +192,26 @@ const TransferBankScreen = ({ navigation, route }) => {
       Alert.alert('Insufficient Balance', 'Your available balance cannot complete this transaction.');
       return;
     }
+    if (!currentUser?.id) {
+      Alert.alert('Sign In Required', 'Please sign in again before making a transfer.');
+      return;
+    }
     if (verifyStatus === 'unverified') {
       Alert.alert(
         'Unverified Account',
         `Could not verify account name with ${selectedBank}. Do you want to proceed?`,
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Proceed Anyway', style: 'destructive', onPress: executeTransfer },
+          {
+            text: 'Proceed Anyway',
+            style: 'destructive',
+            onPress: () => setMpinPromptVisible(true),
+          },
         ]
       );
       return;
     }
-    executeTransfer();
+    setMpinPromptVisible(true);
   };
 
   return (
@@ -273,7 +291,7 @@ const TransferBankScreen = ({ navigation, route }) => {
 
           {verifyStatus === 'verifying' && (
             <View style={styles.verifyingRow}>
-              <ActivityIndicator size="small" color="#7052FF" style={{ marginRight: 8 }} />
+              <ActivityIndicator size="small" color={theme.accent} style={{ marginRight: 8 }} />
               <Text style={[styles.verifyingText, { color: theme.textSecondary }]}>
                 Verifying account with {selectedBank}...
               </Text>
@@ -351,10 +369,10 @@ const TransferBankScreen = ({ navigation, route }) => {
                 onPress={() => setSaveRecipient(!saveRecipient)}
                 activeOpacity={0.7}
               >
-                <View style={[styles.addCircleIcon, saveRecipient && { backgroundColor: '#7052FF' }]}>
+                <View style={[styles.addCircleIcon, { backgroundColor: theme.accent }]}>
                   <Ionicons name={saveRecipient ? 'checkmark' : 'add'} size={14} color="#FFFFFF" />
                 </View>
-                <Text style={styles.addRecipientText}>Add new recipient</Text>
+                <Text style={[styles.addRecipientText, { color: theme.accent }]}>Add new recipient</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -364,6 +382,7 @@ const TransferBankScreen = ({ navigation, route }) => {
           <TouchableOpacity
             style={[
               styles.proceedBtn,
+              { backgroundColor: theme.accent },
               (!accountNumber || !amount || verifyStatus === 'self' || submitting) && styles.proceedDisabled,
             ]}
             onPress={handleProceed}
@@ -374,6 +393,20 @@ const TransferBankScreen = ({ navigation, route }) => {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+      <MpinVerificationModal
+        visible={mpinPromptVisible}
+        userId={currentUser?.id}
+        theme={theme}
+        recipient={resolvedName || `Account ending ${accountNumber.trim().slice(-4)}`}
+        amount={Number.isFinite(parseFloat(amount.replace(/,/g, '')))
+          ? parseFloat(amount.replace(/,/g, '')).toFixed(2)
+          : ''}
+        onCancel={() => setMpinPromptVisible(false)}
+        onVerified={() => {
+          setMpinPromptVisible(false);
+          executeTransfer();
+        }}
+      />
     </ScreenWrapper>
   );
 };

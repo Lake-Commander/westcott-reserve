@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { BankService } from '../services/bankService';
 import ScreenWrapper from '../components/ScreenWrapper';
 import { useAppTheme } from '../hooks/useAppTheme';
+import MpinVerificationModal from '../components/MpinVerificationModal';
 
 const TransferUsernameScreen = ({ navigation, route }) => {
   const { theme } = useAppTheme();
@@ -27,6 +28,7 @@ const TransferUsernameScreen = ({ navigation, route }) => {
   const [resolving, setResolving] = useState(false);
   const [resolvedUser, setResolvedUser] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [mpinPromptVisible, setMpinPromptVisible] = useState(false);
 
   useEffect(() => {
     let targetUsername = '';
@@ -89,35 +91,21 @@ const TransferUsernameScreen = ({ navigation, route }) => {
     };
   }, [username, currentUser?.id]);
 
-  const handleProceed = async () => {
+  const executeTransfer = async () => {
     if (submitting) return;
-
     const cleanUsername = username.trim().replace(/^@/, '');
-    if (!cleanUsername) {
-      Alert.alert('Required', 'Please enter a Westcott username.');
-      return;
-    }
-
-    let targetUser = resolvedUser;
-    if (!targetUser) {
-      setSubmitting(true);
-      targetUser = await BankService.resolveRecipient(cleanUsername, currentUser?.id);
-      setSubmitting(false);
-    }
-
-    if (!targetUser || targetUser.isSelf === undefined) {
-      Alert.alert('User Not Found', 'No Westcott client found with this username.');
-      return;
-    }
-
-    if (targetUser.isSelf) {
-      Alert.alert('Invalid Recipient', 'You cannot transfer funds to yourself.');
-      return;
-    }
-
+    const targetUser = resolvedUser;
     const numAmt = parseFloat(amount.replace(/,/g, ''));
     if (isNaN(numAmt) || numAmt <= 0) {
       Alert.alert('Enter Amount', 'Please specify a valid transfer amount.');
+      return;
+    }
+    if (!targetUser || targetUser.isSelf) {
+      Alert.alert('Invalid Recipient', 'Please verify a valid Westcott recipient before transferring.');
+      return;
+    }
+    if (!currentUser?.id) {
+      Alert.alert('Sign In Required', 'Please sign in again before making a transfer.');
       return;
     }
 
@@ -174,6 +162,52 @@ const TransferUsernameScreen = ({ navigation, route }) => {
     }
   };
 
+  const handleProceed = async () => {
+    if (submitting) return;
+
+    const cleanUsername = username.trim().replace(/^@/, '');
+    if (!cleanUsername) {
+      Alert.alert('Required', 'Please enter a Westcott username.');
+      return;
+    }
+
+    let targetUser = resolvedUser;
+    if (!targetUser) {
+      setSubmitting(true);
+      try {
+        targetUser = await BankService.resolveRecipient(cleanUsername, currentUser?.id);
+      } catch (error) {
+        Alert.alert('Recipient Lookup Failed', error.message || 'Unable to verify this username.');
+        return;
+      } finally {
+        setSubmitting(false);
+      }
+    }
+
+    if (!targetUser || targetUser.isSelf === undefined) {
+      Alert.alert('User Not Found', 'No Westcott client found with this username.');
+      return;
+    }
+    if (targetUser.isSelf) {
+      Alert.alert('Invalid Recipient', 'You cannot transfer funds to yourself.');
+      return;
+    }
+
+    const numAmt = parseFloat(amount.replace(/,/g, ''));
+    if (isNaN(numAmt) || numAmt <= 0) {
+      Alert.alert('Enter Amount', 'Please specify a valid transfer amount.');
+      return;
+    }
+    const currentBal = parseFloat(currentUser?.balance) || 250000.0;
+    if (numAmt > currentBal) {
+      Alert.alert('Insufficient Balance', 'Your available balance cannot complete this transfer.');
+      return;
+    }
+
+    setResolvedUser(targetUser);
+    setMpinPromptVisible(true);
+  };
+
   return (
     <ScreenWrapper>
       <View style={styles.topBar}>
@@ -219,7 +253,7 @@ const TransferUsernameScreen = ({ navigation, route }) => {
               onChangeText={setUsername}
               autoCapitalize="none"
             />
-            {resolving && <ActivityIndicator size="small" color="#7052FF" style={{ marginRight: 8 }} />}
+            {resolving && <ActivityIndicator size="small" color={theme.accent} style={{ marginRight: 8 }} />}
           </View>
 
           {resolvedUser && (
@@ -254,10 +288,10 @@ const TransferUsernameScreen = ({ navigation, route }) => {
                 onPress={() => setSaveRecipient(!saveRecipient)}
                 activeOpacity={0.7}
               >
-                <View style={[styles.addCircleIcon, saveRecipient && { backgroundColor: '#7052FF' }]}>
+                <View style={[styles.addCircleIcon, { backgroundColor: theme.accent }]}>
                   <Ionicons name={saveRecipient ? 'checkmark' : 'add'} size={14} color="#FFFFFF" />
                 </View>
-                <Text style={styles.addRecipientText}>Add new recipient</Text>
+                <Text style={[styles.addRecipientText, { color: theme.accent }]}>Add new recipient</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -265,7 +299,7 @@ const TransferUsernameScreen = ({ navigation, route }) => {
 
         <View style={[styles.footer, { borderTopColor: theme.cardBorder }]}>
           <TouchableOpacity
-            style={[styles.proceedBtn, (!username.trim() || !amount || submitting) && styles.proceedDisabled]}
+            style={[styles.proceedBtn, { backgroundColor: theme.accent }, (!username.trim() || !amount || submitting) && styles.proceedDisabled]}
             onPress={handleProceed}
             disabled={!username.trim() || !amount || submitting}
             activeOpacity={0.8}
@@ -274,6 +308,20 @@ const TransferUsernameScreen = ({ navigation, route }) => {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+      <MpinVerificationModal
+        visible={mpinPromptVisible}
+        userId={currentUser?.id}
+        theme={theme}
+        recipient={resolvedUser?.name}
+        amount={Number.isFinite(parseFloat(amount.replace(/,/g, '')))
+          ? parseFloat(amount.replace(/,/g, '')).toFixed(2)
+          : ''}
+        onCancel={() => setMpinPromptVisible(false)}
+        onVerified={() => {
+          setMpinPromptVisible(false);
+          executeTransfer();
+        }}
+      />
     </ScreenWrapper>
   );
 };

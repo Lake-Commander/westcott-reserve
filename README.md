@@ -13,6 +13,8 @@ not a bank, and it does not conduct real financial transactions.
 - Persistent session storage on mobile.
 - Home, cards, history, profile, transfers, bill payment, savings, and account
   settings screens.
+- Bank transfer picker with United States and European demo banks, plus a link
+  to a public country-by-country SWIFT/BIC JSON directory.
 - Redux-based app state and theme support.
 - Landing-page sign-in and account actions enter the app's existing authentication
   flow.
@@ -37,7 +39,7 @@ not a bank, and it does not conduct real financial transactions.
 
    ```dotenv
    EXPO_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
-   EXPO_PUBLIC_SUPABASE_ANON_KEY=YOUR_SUPABASE_PUBLISHABLE_OR_ANON_KEY
+   EXPO_PUBLIC_SUPABASE_KEY=YOUR_SUPABASE_PUBLISHABLE_OR_ANON_KEY
    ```
 
    Replace the placeholders with the URL and publishable/anon client key from your
@@ -67,14 +69,39 @@ The Expo configuration and SDK-compatible dependencies were updated for reliable
 native builds, including the splash-screen and font setup. The release Gradle
 variant embeds the JavaScript bundle, so the APK runs without a Metro server.
 
+### Vercel hosting
+
+The web experience is a static Expo web export hosted on Vercel. The same
+GitHub Actions workflow builds the signed APK, stages it at
+`public/downloads/westcott-reserve.apk`, builds the Vercel deployment, and
+deploys both the website and APK to production. The landing page's **Download
+APK** link points to `/downloads/westcott-reserve.apk`; Vercel serves it as a
+download.
+
+To enable deployment, create/import the Vercel project for this repository and
+add these GitHub repository settings:
+
+- Secret `VERCEL_TOKEN`: a Vercel access token with permission to deploy to the
+  project.
+- Repository variable `VERCEL_ORG_ID`: the Vercel team/user ID that owns the
+  project.
+- Repository variable `VERCEL_PROJECT_ID`: the Vercel project ID.
+
+The project should use the repository's [vercel.json](./vercel.json) settings
+(`npx expo export`, output directory `dist`). The workflow uses `vercel pull`
+and a prebuilt production deployment, so the Expo build runs in GitHub Actions
+with the configured Supabase secrets; no `.env` file is needed in Vercel or Git.
+Each manual workflow run updates the production website and APK together. The
+APK is not committed to the repository.
+
 ### GitHub Actions build
 
 The workflow is manually triggered at **Actions → Build Android Release APK →
-Run workflow**. Add these repository secrets under **Settings → Secrets and
-variables → Actions**:
+Run workflow**. In addition to the Vercel settings above, add these repository
+secrets under **Settings → Secrets and variables → Actions**:
 
 - `EXPO_PUBLIC_SUPABASE_URL`
-- `EXPO_PUBLIC_SUPABASE_ANON_KEY`
+- `EXPO_PUBLIC_SUPABASE_KEY` (or the legacy `EXPO_PUBLIC_SUPABASE_ANON_KEY`)
 - `ANDROID_KEYSTORE_BASE64`
 - `ANDROID_KEYSTORE_PASSWORD`
 - `ANDROID_KEY_ALIAS`
@@ -102,13 +129,15 @@ signed with the debug key.
 
 The workflow builds an ARM64 and ARMv7 release APK, verifies that it contains the
 embedded JavaScript bundle and has a valid APK signature, then uploads it as the
-`WestcottReserve-Release-APK` workflow artifact. It fails if required secrets are
-missing.
+`WestcottReserve-Release-APK` workflow artifact. It also deploys the site and
+downloadable APK to Vercel. The run fails if any required Supabase, signing, or
+Vercel settings are missing.
 
 ### Local production build
 
-For a local production build, export the Supabase variables above and the
-production signing settings below. Keep the keystore outside the repository:
+For a local production build, export `EXPO_PUBLIC_SUPABASE_URL`,
+`EXPO_PUBLIC_SUPABASE_KEY` (or the legacy `EXPO_PUBLIC_SUPABASE_ANON_KEY`), and
+the production signing settings below. Keep the keystore outside the repository:
 
 ```sh
 export ANDROID_KEYSTORE_PATH=/absolute/path/to/westcott-release.p12
@@ -128,6 +157,70 @@ on a connected Android device with:
 ```sh
 adb install -r android/app/build/outputs/apk/release/app-release.apk
 ```
+
+### Web admin console
+
+The browser admin console is available at `/admin` on the deployed website. It
+uses the existing Supabase sign-in and only grants access to user IDs explicitly
+allowlisted in `public.admin_users`; creating a normal customer account does not
+grant administrative access.
+
+1. Apply the appended admin and app UI configuration sections in `db.sql` to
+   the Supabase project after the existing profiles and transactions schema is
+   installed. On a fresh project, apply the full SQL file once. If the base
+   schema has already been applied, run only the appended sections to avoid
+   recreating the original policies. The migration does not grant admin access
+   to any account automatically.
+2. Create the intended administrator account through Supabase Auth, then grant
+   it from the Supabase SQL editor (replace the example address):
+
+   ```sql
+   INSERT INTO public.admin_users (user_id)
+   SELECT id FROM auth.users WHERE email = lower('admin@example.com')
+   ON CONFLICT (user_id) DO NOTHING;
+   ```
+
+   Repeat this as a trusted database administrator for each authorized admin.
+   Never add a self-service admin sign-up or expose the `admin_users` table.
+3. Configure these environment variables in the Vercel project's server-side
+   environment settings before deploying:
+   `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_KEY`,
+   `SUPABASE_SERVICE_ROLE_KEY`, `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, and
+   `BREVO_SENDER_NAME`. The service-role key and Brevo key must remain server
+   secrets; do not rename them with an `EXPO_PUBLIC_` prefix. The corresponding
+   blank titles are in the local `.env` file for setup convenience. Never commit
+   `.env` or use it as a substitute for Vercel's production secret settings.
+
+The console can suspend or reactivate accounts, flag transactions, mark them
+paused, answer
+customer-care messages, publish in-app notifications, send Brevo emails, and
+toggle the seeded Cards, Savings, Bill payments, and Transfers feature gates.
+Admin mutations are restricted to database functions and recorded in
+`admin_audit_log`. A user's notification bell opens the in-app notification
+feed. Brevo delivery is handled by the server-only
+`/api/admin/send-email` function and requires the server variables above.
+
+The **App appearance** section publishes a constrained server-driven
+configuration for the home welcome/promotion cards, quick actions, brand accent
+and background/card colors, and the sample bank list. The mobile app renders
+only built-in components and allowlisted actions; administrators cannot upload
+or execute code. Apply the app UI configuration SQL section before using these
+editor controls. Published settings are fetched by signed-in users and refreshed
+through Supabase Realtime when available.
+
+This remains a prototype, not a financial operations system. Transaction amounts
+are read-only in the console and emails; administrative emails cannot substitute
+a different amount for the saved transaction amount. A transaction's `paused`
+status is a review label, not a reversal or cancellation of a completed
+transaction. Feature switches gate the app's corresponding screens (and the
+transfer service), but are not a replacement for server-side controls in a
+production financial system.
+
+The bank picker includes sample United States and European options. Its link to
+the [country-by-country SWIFT/BIC JSON directory](https://github.com/smowtion/swiftcode/tree/master/AllCountries)
+opens an external dataset for reference; it is not an integrated or verified
+payment-routing service. Transfers remain simulated and no real bank network is
+connected.
 
 ## Security and configuration notes
 

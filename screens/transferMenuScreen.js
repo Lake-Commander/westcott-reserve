@@ -34,8 +34,8 @@ const TransferMenuScreen = ({ navigation }) => {
             onPress={() => navigation.navigate('transferUsername')}
             activeOpacity={0.7}
           >
-            <View style={styles.iconCircle}>
-              <Ionicons name="sparkles" size={18} color="#7052FF" />
+            <View style={[styles.iconCircle, { backgroundColor: theme.accentSoft }]}>
+              <Ionicons name="sparkles" size={18} color={theme.accent} />
             </View>
             <View style={styles.textCol}>
               <Text style={[styles.rowTitle, { color: theme.textPrimary }]}>Westcott Username</Text>
@@ -73,13 +73,13 @@ const TransferMenuScreen = ({ navigation }) => {
             onPress={() => navigation.navigate('transferBank')}
             activeOpacity={0.7}
           >
-            <View style={[styles.iconCircle, { backgroundColor: 'rgba(112, 82, 255, 0.15)' }]}>
-              <Ionicons name="business-outline" size={18} color="#7052FF" />
+            <View style={[styles.iconCircle, { backgroundColor: theme.accentSoft }]}>
+              <Ionicons name="business-outline" size={18} color={theme.accent} />
             </View>
             <View style={styles.textCol}>
               <Text style={[styles.rowTitle, { color: theme.textPrimary }]}>Bank Transfer</Text>
               <Text style={[styles.rowDesc, { color: theme.textSecondary }]}>
-                Send money to other local bank accounts with their account number.
+                Send money to supported US and European bank accounts.
               </Text>
             </View>
           </TouchableOpacity>

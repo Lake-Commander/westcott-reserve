@@ -72,6 +72,18 @@ export const AuthService = {
     if (error) throw error;
     if (!data?.user) throw new Error('Authentication succeeded but user session is empty.');
 
+    const { data: accountActive, error: accountStatusError } = await supabase.rpc(
+      'is_account_active'
+    );
+    if (accountStatusError) {
+      await supabase.auth.signOut();
+      throw accountStatusError;
+    }
+    if (accountActive !== true) {
+      await supabase.auth.signOut();
+      throw new Error('This account has been temporarily suspended. Contact customer care.');
+    }
+
     // 1. Fetch live customer profile
     let { data: profile } = await supabase
       .from('profiles')
@@ -187,6 +199,18 @@ export const AuthService = {
   getCurrentSession: async () => {
     const { data } = await supabase.auth.getSession();
     if (!data?.session?.user) return null;
+
+    const { data: accountActive, error: accountStatusError } = await supabase.rpc(
+      'is_account_active'
+    );
+    if (accountStatusError) {
+      await supabase.auth.signOut();
+      throw accountStatusError;
+    }
+    if (accountActive !== true) {
+      await supabase.auth.signOut();
+      return null;
+    }
 
     let { data: profile } = await supabase
       .from('profiles')

@@ -173,6 +173,15 @@ export const BankService = {
     currency = 'USD',
     idempotencyKey = null,
   }) => {
+    const { data: transfersEnabled, error: featureError } = await supabase.rpc(
+      'is_feature_enabled',
+      { p_feature_key: 'transfers' }
+    );
+    if (featureError) throw featureError;
+    if (transfersEnabled !== true) {
+      throw new Error('Transfers are temporarily unavailable.');
+    }
+
     const token =
       idempotencyKey ||
       `wr-tx-${senderId.slice(0, 8)}-${Date.now()}-${Math.floor(Math.random() * 100000)}`;

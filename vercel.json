@@ -1,9 +1,15 @@
 {
-  "buildCommand": "npx expo export",
+  "buildCommand": "npx expo export --platform web",
   "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/admin",
+      "destination": "/"
+    }
+  ],
   "headers": [
     {
-      "source": "/(.*).apk",
+      "source": "/downloads/westcott-reserve.apk",
       "headers": [
         {
           "key": "Content-Type",
@@ -11,7 +17,7 @@
         },
         {
           "key": "Content-Disposition",
-          "value": "attachment"
+          "value": "attachment; filename=\"westcott-reserve.apk\""
         }
       ]
     }

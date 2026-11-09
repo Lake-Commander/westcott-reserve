@@ -1,20 +1,56 @@
 // screens/contactUsScreen.js
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
   Linking,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ScreenWrapper from '../components/ScreenWrapper';
 import { useAppTheme } from '../hooks/useAppTheme';
+import { supabase } from '../services/supabaseClient';
 
 const ContactUsScreen = ({ navigation }) => {
   const { theme } = useAppTheme();
+  const [subject, setSubject] = useState('');
+  const [message, setMessage] = useState('');
+  const [sending, setSending] = useState(false);
+  const [supportFeedback, setSupportFeedback] = useState('');
+
+  const submitSupportMessage = async () => {
+    setSending(true);
+    setSupportFeedback('');
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      const user = sessionData.session?.user;
+      if (!user?.id || !user.email) {
+        throw new Error('Sign in with an account that has an email address to contact support.');
+      }
+
+      const { error } = await supabase.from('customer_care_messages').insert({
+        user_id: user.id,
+        email: user.email,
+        subject: subject.trim(),
+        message: message.trim(),
+      });
+      if (error) throw error;
+
+      setSubject('');
+      setMessage('');
+      setSupportFeedback('Your message was sent to customer care.');
+    } catch (error) {
+      setSupportFeedback(error.message || 'Unable to send your message.');
+    } finally {
+      setSending(false);
+    }
+  };
 
   const handleOpenLink = async (url) => {
     try {
@@ -43,6 +79,46 @@ const ContactUsScreen = ({ navigation }) => {
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <Text style={[styles.title, { color: theme.textPrimary }]}>Contact Us</Text>
+
+        <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
+          <Text style={[styles.cardValBold, { color: theme.textPrimary }]}>Message customer care</Text>
+          <TextInput
+            accessibilityLabel="Subject"
+            style={[styles.supportInput, { color: theme.textPrimary, borderColor: theme.cardBorder }]}
+            value={subject}
+            onChangeText={setSubject}
+            placeholder="Subject"
+            placeholderTextColor={theme.textMuted}
+            maxLength={160}
+          />
+          <TextInput
+            accessibilityLabel="Message"
+            style={[styles.supportInput, styles.supportMessage, { color: theme.textPrimary, borderColor: theme.cardBorder }]}
+            value={message}
+            onChangeText={setMessage}
+            placeholder="How can we help?"
+            placeholderTextColor={theme.textMuted}
+            multiline
+            maxLength={5000}
+          />
+          {!!supportFeedback && (
+            <Text accessibilityLiveRegion="polite" style={{ color: theme.textSecondary }}>
+              {supportFeedback}
+            </Text>
+          )}
+          <TouchableOpacity
+            style={[styles.sendButton, (!subject.trim() || !message.trim() || sending) && styles.sendButtonDisabled]}
+            onPress={submitSupportMessage}
+            disabled={!subject.trim() || !message.trim() || sending}
+            activeOpacity={0.8}
+          >
+            {sending ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.sendButtonText}>Send message</Text>
+            )}
+          </TouchableOpacity>
+        </View>
 
         {/* Address Card */}
         <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
@@ -189,4 +265,9 @@ const styles = StyleSheet.create({
   cardValBold: { fontSize: 14, fontWeight: '700' },
   cardSubText: { fontSize: 12, marginTop: 1 },
   divider: { height: 1, marginVertical: 10 },
+  supportInput: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 },
+  supportMessage: { minHeight: 100, textAlignVertical: 'top' },
+  sendButton: { backgroundColor: '#7052FF', borderRadius: 10, padding: 12, alignItems: 'center' },
+  sendButtonDisabled: { opacity: 0.55 },
+  sendButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
 });
