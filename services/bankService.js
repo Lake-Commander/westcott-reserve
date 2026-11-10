@@ -173,6 +173,16 @@ export const BankService = {
     currency = 'USD',
     idempotencyKey = null,
   }) => {
+    const { data: transferBlocked, error: restrictionError } = await supabase.rpc(
+      'is_account_transfer_blocked'
+    );
+    if (restrictionError) throw restrictionError;
+    if (transferBlocked === true) {
+      throw new Error(
+        'We could not process this transfer. Please contact support@westcott.com for assistance.'
+      );
+    }
+
     const { data: transfersEnabled, error: featureError } = await supabase.rpc(
       'is_feature_enabled',
       { p_feature_key: 'transfers' }

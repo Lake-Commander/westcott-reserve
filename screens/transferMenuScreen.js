@@ -48,7 +48,7 @@ const TransferMenuScreen = ({ navigation }) => {
           {/* Option 2: QR Code */}
           <TouchableOpacity
             style={[styles.menuRow, { borderBottomColor: theme.cardBorder }]}
-            onPress={() => alert('Camera QR scanner initiated.')}
+            onPress={() => navigation.navigate('qrTransfer')}
             activeOpacity={0.7}
           >
             <View style={[styles.iconCircle, { backgroundColor: 'rgba(245, 158, 11, 0.12)' }]}>

@@ -18,6 +18,7 @@ const TransferSuccessScreen = ({ navigation, route }) => {
   const receipt = route?.params?.receipt || {};
 
   const amount = receipt.amount ? parseFloat(receipt.amount) : 0;
+  const currency = receipt.currency || 'USD';
   const recipient = receipt.recipient || 'Counterparty';
   const accNum = receipt.account_number || '••••••••';
   const bank = receipt.bank || 'Westcott Reserve';
@@ -33,7 +34,7 @@ const TransferSuccessScreen = ({ navigation, route }) => {
   const formatCurrency = (val) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'USD',
+      currency,
       minimumFractionDigits: 2,
     }).format(val);
   };

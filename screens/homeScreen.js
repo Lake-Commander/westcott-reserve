@@ -1,5 +1,5 @@
 // screens/homeScreen.js
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Modal,
 } from "react-native";
 import { useSelector, useDispatch } from "react-redux";
+import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import { BankService } from "../services/bankService";
@@ -19,6 +20,7 @@ import ScreenWrapper from "../components/ScreenWrapper";
 import { useAppTheme } from "../hooks/useAppTheme";
 import { useAppUIConfig } from "../components/AppUIConfigProvider";
 import { UI_ACTION_BY_ID } from "../services/appUiConfig";
+import { getAppSettings } from "../services/appSettingsService";
 
 const HomeScreen = ({ navigation }) => {
   const dispatch = useDispatch();
@@ -33,7 +35,84 @@ const HomeScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(!reduxUser?.id);
   const [refreshing, setRefreshing] = useState(false);
   const [showBalance, setShowBalance] = useState(true);
+  const [showBalanceOnLaunch, setShowBalanceOnLaunch] = useState(true);
+  const [balanceSettingsLoaded, setBalanceSettingsLoaded] = useState(false);
+  const [notificationCount, setNotificationCount] = useState(0);
   const [receiveModalVisible, setReceiveModalVisible] = useState(false);
+  const balanceSettingsRef = useRef({ userId: null, value: null });
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      let notificationChannel;
+      if (!reduxUser?.id) {
+        setBalanceSettingsLoaded(false);
+        return () => {
+          active = false;
+        };
+      }
+
+      setBalanceSettingsLoaded(false);
+      const notificationCountRequest = supabase
+        .from('admin_notifications')
+        .select('id', { count: 'exact', head: true })
+        .then(({ count, error }) => {
+          if (error) {
+            console.warn('Unable to load notification count:', error);
+            return 0;
+          }
+          return count || 0;
+        });
+      Promise.all([
+        getAppSettings(reduxUser.id),
+        notificationCountRequest,
+      ])
+        .then(([settings, loadedNotificationCount]) => {
+          if (!active) return;
+          const enabled = Boolean(settings.show_balance_on_launch);
+          if (
+            balanceSettingsRef.current.userId !== reduxUser.id ||
+            balanceSettingsRef.current.value !== enabled
+          ) {
+            setShowBalance(enabled);
+          }
+          balanceSettingsRef.current = { userId: reduxUser.id, value: enabled };
+          setShowBalanceOnLaunch(enabled);
+          const notificationsEnabled = Boolean(settings.in_app_notifications_enabled);
+          setNotificationCount(notificationsEnabled ? loadedNotificationCount : 0);
+          if (notificationsEnabled) {
+            notificationChannel = supabase
+              .channel(`home-notifications-${reduxUser.id}`)
+              .on(
+                'postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'admin_notifications' },
+                (payload) => {
+                  const audience = payload.new?.audience_user_id;
+                  if (active && (!audience || audience === reduxUser.id)) {
+                    setNotificationCount((count) => count + 1);
+                  }
+                }
+              )
+              .subscribe();
+          }
+          setBalanceSettingsLoaded(true);
+        })
+        .catch((error) => {
+          console.warn('Unable to load account settings:', error);
+          if (!active) return;
+          balanceSettingsRef.current = { userId: reduxUser.id, value: false };
+          setShowBalanceOnLaunch(false);
+          setShowBalance(false);
+          setNotificationCount(0);
+          setBalanceSettingsLoaded(true);
+        });
+
+      return () => {
+        active = false;
+        if (notificationChannel) supabase.removeChannel(notificationChannel);
+      };
+    }, [reduxUser?.id])
+  );
 
   const syncLiveAccount = useCallback(async () => {
     try {
@@ -149,14 +228,25 @@ const HomeScreen = ({ navigation }) => {
   const formatCurrency = (val) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: "USD",
+      currency: user?.currency || reduxUser?.currency || "USD",
       minimumFractionDigits: 2,
     }).format(val || 0);
+  };
+
+  const toggleBalanceVisibility = () => {
+    setShowBalance((visible) => !visible);
   };
 
   const navigateToAction = (actionId) => {
     const action = UI_ACTION_BY_ID[actionId];
     if (action) navigation.navigate(action.route);
+  };
+
+  const openReceipt = (tx) => {
+    navigation.navigate('transactionDetails', {
+      transaction: tx,
+      currency: user?.currency,
+    });
   };
 
   const homeActions = config.home.quickActions.filter((action) => action.enabled);
@@ -187,7 +277,7 @@ const HomeScreen = ({ navigation }) => {
         <View style={styles.headerRight}>
           <TouchableOpacity
             style={[styles.headerIconBtn, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}
-            onPress={() => Alert.alert("Concierge Desk", "Encrypted private support channel online.")}
+            onPress={() => navigation.navigate('liveSupportChat')}
             activeOpacity={0.7}
           >
             <Ionicons name="chatbubble-ellipses-outline" size={19} color={theme.textPrimary} />
@@ -195,11 +285,11 @@ const HomeScreen = ({ navigation }) => {
 
           <TouchableOpacity
             style={[styles.headerIconBtn, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}
-            onPress={() => navigation.navigate("notifications")}
+            onPress={() => navigation.navigate('notifications')}
             activeOpacity={0.7}
           >
             <Ionicons name="notifications-outline" size={19} color={theme.textPrimary} />
-            <View style={styles.notifDot} />
+            {notificationCount > 0 && <View style={styles.notifDot} />}
           </TouchableOpacity>
         </View>
       </View>
@@ -258,15 +348,16 @@ const HomeScreen = ({ navigation }) => {
 
           <View style={styles.amountEyeRow}>
             <Text style={[styles.balanceValue, { color: theme.textPrimary }]}>
-              {loading && !refreshing
-                ? "Updating..."
-                : showBalance
-                ? formatCurrency(balance)
-                : "••••••••"}
+              {loading && !refreshing ? 'Updating...' : balanceSettingsLoaded && showBalance ? formatCurrency(balance) : '••••••••'}
             </Text>
-            <TouchableOpacity onPress={() => setShowBalance(!showBalance)} style={styles.eyeBtn}>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel={showBalance ? 'Hide balance' : 'Show balance'}
+              onPress={toggleBalanceVisibility}
+              style={styles.eyeBtn}
+            >
               <Ionicons
-                name={showBalance ? "eye-outline" : "eye-off-outline"}
+                name={showBalance ? 'eye-outline' : 'eye-off-outline'}
                 size={20}
                 color={theme.textMuted}
               />
@@ -321,12 +412,27 @@ const HomeScreen = ({ navigation }) => {
         )}
 
         {/* Product Carousel */}
-        <Text style={[styles.sectionHeading, { color: theme.textPrimary }]}>Financial Products</Text>
+        <Text style={[styles.sectionHeading, { color: theme.textPrimary }]}>Market & Products</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScroll}>
           <TouchableOpacity
             style={[styles.productCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}
             activeOpacity={0.8}
-            onPress={() => navigation.navigate("globalAccounts")}
+            onPress={() => navigation.navigate('stocks')}
+          >
+            <View style={[styles.productBadge, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
+              <Text style={[styles.productBadgeText, { color: '#10B981' }]}>LIVE</Text>
+            </View>
+            <Ionicons name="trending-up-outline" size={28} color="#10B981" style={{ marginVertical: 8 }} />
+            <Text style={[styles.productCardTitle, { color: theme.textPrimary }]}>Stocks</Text>
+            <Text style={[styles.productCardSub, { color: theme.textSecondary }]}>
+              Track major movers and watchlists with live market updates.
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.productCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}
+            activeOpacity={0.8}
+            onPress={() => navigation.navigate('globalAccounts')}
           >
             <View style={[styles.productBadge, { backgroundColor: theme.accentSoft }]}>
               <Text style={[styles.productBadgeText, { color: theme.accent }]}>GLOBAL FX</Text>
@@ -341,30 +447,15 @@ const HomeScreen = ({ navigation }) => {
           <TouchableOpacity
             style={[styles.productCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}
             activeOpacity={0.8}
-            onPress={() => navigation.navigate("savings")}
+            onPress={() => navigation.navigate('savings')}
           >
-            <View style={[styles.productBadge, { backgroundColor: "rgba(245, 158, 11, 0.15)" }]}>
-              <Text style={[styles.productBadgeText, { color: "#F59E0B" }]}>24% APY</Text>
+            <View style={[styles.productBadge, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
+              <Text style={[styles.productBadgeText, { color: '#F59E0B' }]}>24% APY</Text>
             </View>
-            <Ionicons name="trending-up-outline" size={28} color="#F59E0B" style={{ marginVertical: 8 }} />
+            <Ionicons name="shield-checkmark-outline" size={28} color="#F59E0B" style={{ marginVertical: 8 }} />
             <Text style={[styles.productCardTitle, { color: theme.textPrimary }]}>Target Vaults</Text>
             <Text style={[styles.productCardSub, { color: theme.textSecondary }]}>
               Lock funds safely with automated daily interest payouts credited to your account.
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.productCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}
-            activeOpacity={0.8}
-            onPress={() => navigation.navigate("Cards")}
-          >
-            <View style={[styles.productBadge, { backgroundColor: "rgba(16, 185, 129, 0.15)" }]}>
-              <Text style={[styles.productBadgeText, { color: "#10B981" }]}>ACTIVE</Text>
-            </View>
-            <Ionicons name="card-outline" size={28} color="#10B981" style={{ marginVertical: 8 }} />
-            <Text style={[styles.productCardTitle, { color: theme.textPrimary }]}>Virtual Dollar Card</Text>
-            <Text style={[styles.productCardSub, { color: theme.textSecondary }]}>
-              Spend securely online on Apple, Spotify, AWS, and international checkout sites.
             </Text>
           </TouchableOpacity>
         </ScrollView>
@@ -377,7 +468,6 @@ const HomeScreen = ({ navigation }) => {
               <Ionicons name="sparkles" size={12} color="#F59E0B" />
               <Text style={styles.promoBadgeText}>Special Promotion</Text>
             </View>
-            <Text style={[styles.promoExpText, { color: theme.textSecondary }]}>Expires in 4 days</Text>
           </View>
           <Text style={[styles.promoTitle, { color: theme.textPrimary }]}>{config.home.promoTitle}</Text>
           <Text style={[styles.promoDesc, { color: theme.textSecondary }]}>
@@ -419,40 +509,45 @@ const HomeScreen = ({ navigation }) => {
             </View>
           ) : (
             transactions.slice(0, 3).map((tx) => (
-              <View key={tx.id} style={[styles.txRow, { borderBottomColor: theme.cardBorder }]}>
+              <TouchableOpacity
+                key={tx.id}
+                onPress={() => openReceipt(tx)}
+                activeOpacity={0.8}
+                style={[styles.txRow, { borderBottomColor: theme.cardBorder }]}
+              >
                 <View
                   style={[
                     styles.txIconCircle,
                     {
                       backgroundColor:
-                        tx.type === "CREDIT" ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)",
+                        tx.type === 'CREDIT' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
                     },
                   ]}
                 >
                   <Ionicons
-                    name={tx.type === "CREDIT" ? "arrow-down" : "arrow-up"}
+                    name={tx.type === 'CREDIT' ? 'arrow-down' : 'arrow-up'}
                     size={16}
-                    color={tx.type === "CREDIT" ? "#10B981" : "#EF4444"}
+                    color={tx.type === 'CREDIT' ? '#10B981' : '#EF4444'}
                   />
                 </View>
                 <View style={styles.txDetails}>
                   <Text style={[styles.txName, { color: theme.textPrimary }]} numberOfLines={1}>
-                    {tx.counterparty || "Direct Wire"}
+                    {tx.counterparty || 'Direct Wire'}
                   </Text>
                   <Text style={[styles.txCategory, { color: theme.textMuted }]}>
-                    {tx.category || "Transfer"}
+                    {tx.category || 'Transfer'}
                   </Text>
                 </View>
                 <Text
                   style={[
                     styles.txAmount,
-                    { color: tx.type === "CREDIT" ? "#10B981" : theme.textPrimary },
+                    { color: tx.type === 'CREDIT' ? '#10B981' : theme.textPrimary },
                   ]}
                 >
-                  {tx.type === "CREDIT" ? "+" : "-"}
+                  {tx.type === 'CREDIT' ? '+' : '-'}
                   {formatCurrency(tx.amount)}
                 </Text>
-              </View>
+              </TouchableOpacity>
             ))
           )}
         </View>
@@ -472,7 +567,7 @@ const HomeScreen = ({ navigation }) => {
             </View>
 
             <Text style={{ color: theme.textSecondary, fontSize: 13, lineHeight: 18 }}>
-              Provide this 10-digit account number to counterparties to receive direct wire credits.
+              Share this pay code or your account number to receive funds from another Westcott user.
             </Text>
 
             <TouchableOpacity
@@ -480,20 +575,22 @@ const HomeScreen = ({ navigation }) => {
               onPress={handleCopyAccount}
               activeOpacity={0.7}
             >
-              <Text style={{ color: theme.textMuted, fontSize: 11, fontWeight: "700" }}>WESTCOTT ACCOUNT NUMBER</Text>
-              <Text style={[styles.receiveAccNum, { color: theme.accent }]}>{accountNumberDisplay}</Text>
-              <Text style={{ color: theme.textPrimary, fontSize: 13, fontWeight: "600" }}>{displayName}</Text>
+              <Text style={{ color: theme.textMuted, fontSize: 11, fontWeight: '700' }}>WESTCOTT PAY CODE</Text>
+              <Text style={[styles.receiveAccNum, { color: theme.accent }]}>
+                {`westcott://pay?user=${user?.username || handleName.replace('@', '')}&name=${encodeURIComponent(displayName)}`}
+              </Text>
+              <Text style={{ color: theme.textPrimary, fontSize: 13, fontWeight: '600' }}>{displayName}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.modalSubmitBtn, { backgroundColor: theme.accent }]}
               onPress={async () => {
-                await handleCopyAccount();
+                await Clipboard.setStringAsync(`westcott://pay?user=${user?.username || handleName.replace('@', '')}&name=${encodeURIComponent(displayName)}`);
                 setReceiveModalVisible(false);
               }}
               activeOpacity={0.8}
             >
-              <Text style={styles.modalSubmitBtnText}>Copy Account Number</Text>
+              <Text style={styles.modalSubmitBtnText}>Copy Pay Code</Text>
             </TouchableOpacity>
           </View>
         </View>

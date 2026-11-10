@@ -6,8 +6,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Switch,
-  
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useDispatch } from "react-redux";
@@ -18,7 +16,6 @@ const PreferencesScreen = ({ navigation }) => {
   const dispatch = useDispatch();
   const { themeMode, isDark, theme } = useAppTheme();
 
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [showThemeOptions, setShowThemeOptions] = useState(false);
 
   const setThemeMode = (mode) => {
@@ -49,21 +46,20 @@ const PreferencesScreen = ({ navigation }) => {
 
         {/* Preferences Card */}
         <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-          {/* Notifications Toggle */}
-          <View style={[styles.itemRow, { borderBottomColor: theme.cardBorder }]}>
+          {/* Notification preferences are managed in one account-specific screen. */}
+          <TouchableOpacity
+            style={[styles.itemRow, { borderBottomColor: theme.cardBorder }]}
+            onPress={() => navigation.navigate('notificationSettings')}
+            activeOpacity={0.7}
+          >
             <View style={styles.leftCol}>
               <View style={styles.iconCircle}>
                 <Ionicons name="notifications-outline" size={18} color="#7052FF" />
               </View>
-              <Text style={[styles.itemLabel, { color: theme.textPrimary }]}>Push Notifications</Text>
+              <Text style={[styles.itemLabel, { color: theme.textPrimary }]}>Notification Settings</Text>
             </View>
-            <Switch
-              value={notificationsEnabled}
-              onValueChange={setNotificationsEnabled}
-              trackColor={{ false: "#262632", true: "#7052FF" }}
-              thumbColor="#FFFFFF"
-            />
-          </View>
+            <Ionicons name="chevron-forward" size={16} color={theme.textMuted} />
+          </TouchableOpacity>
 
           {/* Change Theme */}
           <TouchableOpacity

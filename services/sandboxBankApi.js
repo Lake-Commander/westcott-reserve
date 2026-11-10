@@ -59,6 +59,16 @@ export const SandboxBankApi = {
 
   // 2. Authorize and Dispatch Transfer
   executeTransfer: async ({ senderId, receiverAccount, receiverName, bankName, amount, currency = 'USD', note }) => {
+    const { data: transferBlocked, error: restrictionError } = await supabase.rpc(
+      'is_account_transfer_blocked'
+    );
+    if (restrictionError) throw restrictionError;
+    if (transferBlocked === true) {
+      throw new Error(
+        'We could not process this transfer. Please contact support@westcott.com for assistance.'
+      );
+    }
+
     const { data, error } = await supabase.rpc('process_banking_transfer', {
       p_sender_id: senderId,
       p_receiver_acc: receiverAccount,

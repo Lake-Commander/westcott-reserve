@@ -17,6 +17,7 @@ import { useDispatch } from 'react-redux';
 import { AuthService } from '../services/authService';
 import ScreenWrapper from '../components/ScreenWrapper';
 import { useAppTheme } from '../hooks/useAppTheme';
+import BrandLockup from '../components/BrandLockup';
 
 const AuthScreen = ({ navigation }) => {
   const dispatch = useDispatch();
@@ -25,51 +26,109 @@ const AuthScreen = ({ navigation }) => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
   const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [mpin, setMpin] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [mfaRequired, setMfaRequired] = useState(false);
+  const [signupOtpRequired, setSignupOtpRequired] = useState(false);
+  const [mfaCode, setMfaCode] = useState('');
+  const verificationRequired = mfaRequired || signupOtpRequired;
 
   const handleAuth = async () => {
-    if (!email.trim() || !password) {
+    if (mfaRequired && mfaCode.trim().length !== 6) {
+      Alert.alert('Invalid Code', 'Enter the current 6-digit code from your authenticator app.');
+      return;
+    }
+    if (signupOtpRequired && mfaCode.trim().length < 6) {
+      Alert.alert('Invalid Code', 'Enter the 6-digit code sent to your email.');
+      return;
+    }
+    if (!verificationRequired && (!email.trim() || !password)) {
       Alert.alert('Required Fields', 'Please enter your email and password.');
       return;
     }
     setLoading(true);
     try {
-      if (isSignUp) {
+      if (mfaRequired) {
+        const { profile } = await AuthService.verifySignInMfa(mfaCode);
+        dispatch({ type: 'SET_USER', payload: profile });
+        navigation.reset({ index: 0, routes: [{ name: 'home' }] });
+      } else if (signupOtpRequired) {
+        const { profile } = await AuthService.verifySignUpOtp({
+          email: email.trim(),
+          token: mfaCode,
+        });
+        dispatch({ type: 'SET_USER', payload: profile });
+        navigation.reset({ index: 0, routes: [{ name: 'home' }] });
+      } else if (isSignUp) {
         if (!fullName.trim()) {
           Alert.alert('Required Field', 'Please enter your legal full name.');
           setLoading(false);
           return;
         }
-        await AuthService.signUp({
+        const result = await AuthService.signUp({
           email: email.trim(),
           password,
           fullName: fullName.trim(),
+          phone: phone.trim(),
           mpin: mpin || '0000',
         });
-        const { profile } = await AuthService.signIn({
-          email: email.trim(),
-          password,
-        });
-        if (profile) {
-          dispatch({ type: 'SET_USER', payload: profile });
+        if (result.requiresEmailConfirmation) {
+          setSignupOtpRequired(true);
+          setPassword('');
+          return;
+        }
+        if (result.profile) {
+          dispatch({ type: 'SET_USER', payload: result.profile });
           navigation.reset({ index: 0, routes: [{ name: 'home' }] });
         } else {
           Alert.alert('Account Created', 'Please sign in with your credentials.');
           setIsSignUp(false);
         }
       } else {
-        const { profile } = await AuthService.signIn({
+        const result = await AuthService.signIn({
           email: email.trim(),
           password,
         });
-        dispatch({ type: 'SET_USER', payload: profile });
+        if (result.requiresMfa) {
+          setMfaRequired(true);
+          setPassword('');
+          return;
+        }
+        dispatch({ type: 'SET_USER', payload: result.profile });
         navigation.reset({ index: 0, routes: [{ name: 'home' }] });
       }
     } catch (err) {
       Alert.alert('Authentication Failed', err.message || 'Invalid credentials or connection error.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const cancelVerification = async () => {
+    setLoading(true);
+    try {
+      if (mfaRequired) await AuthService.cancelPendingMfaSignIn();
+      setMfaRequired(false);
+      setSignupOtpRequired(false);
+      setMfaCode('');
+      setIsSignUp(false);
+    } catch (error) {
+      Alert.alert('Sign Out Failed', error.message || 'Unable to cancel verification.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resendSignupCode = async () => {
+    setLoading(true);
+    try {
+      await AuthService.resendSignUpOtp(email);
+      Alert.alert('Code Sent', 'A new email confirmation code has been requested.');
+    } catch (error) {
+      Alert.alert('Unable to Resend', error.message || 'Please wait before requesting another code.');
     } finally {
       setLoading(false);
     }
@@ -81,30 +140,72 @@ const AuthScreen = ({ navigation }) => {
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           {/* Header */}
           <View style={styles.header}>
-            <View style={[styles.logoBadge, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-              <Ionicons name="sparkles" size={30} color="#7052FF" />
-            </View>
-            <Text style={[styles.appTitle, { color: theme.textPrimary }]}>Westcott Reserve</Text>
-            <Text style={[styles.appSubtitle, { color: theme.textSecondary }]}>Private Digital Banking</Text>
+            <BrandLockup iconSize={60} subtitle="DIGITAL FINANCE" />
           </View>
 
-          {/* Tab Switcher */}
-          <View style={[styles.tabContainer, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-            <TouchableOpacity
-              style={[styles.tab, !isSignUp && { backgroundColor: theme.surfaceLight, borderColor: theme.accent, borderWidth: 1 }]}
-              onPress={() => setIsSignUp(false)}
-            >
-              <Text style={[styles.tabText, { color: !isSignUp ? theme.textPrimary : theme.textMuted }]}>Sign In</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tab, isSignUp && { backgroundColor: theme.surfaceLight, borderColor: theme.accent, borderWidth: 1 }]}
-              onPress={() => setIsSignUp(true)}
-            >
-              <Text style={[styles.tabText, { color: isSignUp ? theme.textPrimary : theme.textMuted }]}>Open Account</Text>
-            </TouchableOpacity>
-          </View>
+          {!verificationRequired && (
+            <View style={[styles.tabContainer, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
+              <TouchableOpacity
+                style={[styles.tab, !isSignUp && { backgroundColor: theme.surfaceLight, borderColor: theme.accent, borderWidth: 1 }]}
+                onPress={() => setIsSignUp(false)}
+              >
+                <Text style={[styles.tabText, { color: !isSignUp ? theme.textPrimary : theme.textMuted }]}>Sign In</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.tab, isSignUp && { backgroundColor: theme.surfaceLight, borderColor: theme.accent, borderWidth: 1 }]}
+                onPress={() => setIsSignUp(true)}
+              >
+                <Text style={[styles.tabText, { color: isSignUp ? theme.textPrimary : theme.textMuted }]}>Open Account</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           {/* Form */}
+          {verificationRequired ? (
+            <View style={styles.form}>
+              <Text style={[styles.label, { color: theme.textSecondary }]}>
+                {mfaRequired
+                  ? 'Enter the current code from your authenticator app.'
+                  : `Enter the 6-digit email confirmation code sent to ${email}.`}
+              </Text>
+              <TextInput
+                accessibilityLabel={mfaRequired ? 'Authenticator code' : 'Email confirmation code'}
+                style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, color: theme.textPrimary }]}
+                placeholder="6-digit code"
+                placeholderTextColor={theme.textMuted}
+                value={mfaCode}
+                onChangeText={setMfaCode}
+                keyboardType="number-pad"
+                autoComplete="one-time-code"
+                maxLength={6}
+              />
+              <TouchableOpacity style={styles.submitBtn} onPress={handleAuth} disabled={loading} activeOpacity={0.8}>
+                {loading ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.submitBtnText}>
+                    {mfaRequired ? 'Verify and Sign In' : 'Confirm Email and Sign In'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.forgotBtn}
+                onPress={cancelVerification}
+                disabled={loading}
+              >
+                <Text style={styles.forgotBtnText}>Cancel and return to sign in</Text>
+              </TouchableOpacity>
+              {signupOtpRequired && (
+                <TouchableOpacity
+                  style={styles.forgotBtn}
+                  onPress={resendSignupCode}
+                  disabled={loading}
+                >
+                  <Text style={styles.forgotBtnText}>Resend confirmation code</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ) : (
           <View style={styles.form}>
             {isSignUp && (
               <View style={styles.inputGroup}>
@@ -116,6 +217,21 @@ const AuthScreen = ({ navigation }) => {
                   value={fullName}
                   onChangeText={setFullName}
                   autoCapitalize="words"
+                />
+              </View>
+            )}
+
+            {isSignUp && (
+              <View style={styles.inputGroup}>
+                <Text style={[styles.label, { color: theme.textSecondary }]}>Phone Number</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, color: theme.textPrimary }]}
+                  placeholder="e.g. +2348000000000"
+                  placeholderTextColor={theme.textMuted}
+                  value={phone}
+                  onChangeText={setPhone}
+                  keyboardType="phone-pad"
+                  autoCapitalize="none"
                 />
               </View>
             )}
@@ -178,6 +294,7 @@ const AuthScreen = ({ navigation }) => {
               )}
             </TouchableOpacity>
           </View>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </ScreenWrapper>

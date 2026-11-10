@@ -5,10 +5,13 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
+import * as Notifications from "expo-notifications";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppTheme } from "./hooks/useAppTheme";
 
 import WebLandingScreen from "./screens/webLandingScreen";
+import WebDownloadScreen from "./screens/webDownloadScreen";
+import WebInfoScreen from "./screens/webInfoScreen";
 import AdminPanelScreen from "./screens/adminPanelScreen";
 import NotificationsScreen from "./screens/notificationsScreen";
 import FeatureGate from "./components/FeatureGate";
@@ -20,6 +23,7 @@ import LockScreen from "./screens/lockScreen";
 import HomeScreen from "./screens/homeScreen";
 import CardsScreen from "./screens/cardsScreen";
 import HistoryScreen from "./screens/historyScreen";
+import TransactionDetailsScreen from "./screens/transactionDetailsScreen";
 import ProfileScreen from "./screens/profileScreen";
 import PersonalInfoScreen from "./screens/personalInfoScreen";
 import PreferencesScreen from "./screens/preferencesScreen";
@@ -28,6 +32,7 @@ import AllMenuPopup from "./screens/allMenuPopup";
 // Sub Profile Screens
 import VerificationScreen from "./screens/verificationScreen";
 import SecurityScreen from "./screens/securityScreen";
+import MfaSettingsScreen from "./screens/mfaSettingsScreen";
 import AccountLimitsScreen from "./screens/accountLimitsScreen";
 import TransactionFeesScreen from "./screens/transactionFeesScreen";
 import NotificationSettingsScreen from "./screens/notificationSettingsScreen";
@@ -36,6 +41,12 @@ import RequestStatementScreen from "./screens/requestStatementScreen";
 import DeviceHistoryScreen from "./screens/deviceHistoryScreen";
 import ContactUsScreen from "./screens/contactUsScreen";
 import TermsConditionsScreen from "./screens/termsConditionsScreen";
+import PrivacyPolicyScreen from "./screens/privacyPolicyScreen";
+import FaqScreen from "./screens/faqScreen";
+import LiveSupportChatScreen from "./screens/liveSupportChatScreen";
+import QRTransferScreen from "./screens/qrTransferScreen";
+import StocksScreen from "./screens/stocksScreen";
+import ComingSoonScreen from "./screens/comingSoonScreen";
 
 // Additional Homepage Feature Screens
 import PayBillsScreen from "./screens/payBillsScreen";
@@ -50,6 +61,17 @@ import TransferSuccessScreen from "./screens/transferSuccessScreen";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
+
+if (Platform.OS !== "web") {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+    }),
+  });
+}
 
 const EmptyCenterScreen = () => null;
 const CardsScreenWithGate = (props) => (
@@ -166,13 +188,19 @@ const MainTabs = () => {
 
 const App = () => {
   const [showAppOnWeb, setShowAppOnWeb] = useState(false);
+  const webPath =
+    Platform.OS === "web" && typeof window !== "undefined"
+      ? window.location.pathname.replace(/\/+$/, "") || "/"
+      : "/";
 
-  if (
-    Platform.OS === "web" &&
-    typeof window !== "undefined" &&
-    window.location.pathname.replace(/\/+$/, "") === "/admin"
-  ) {
+  if (webPath === "/admin") {
     return <AdminPanelScreen />;
+  }
+  if (webPath === "/download-app" || webPath === "/download") {
+    return <WebDownloadScreen />;
+  }
+  if (["/privacy-policy", "/terms", "/faqs"].includes(webPath)) {
+    return <WebInfoScreen />;
   }
 
   // Serve landing page ONLY on Web platform before launching app console
@@ -189,12 +217,14 @@ const App = () => {
         <Stack.Screen name="lock" component={LockScreen} />
         <Stack.Screen name="home" component={MainTabs} />
         <Stack.Screen name="notifications" component={NotificationsScreen} />
+        <Stack.Screen name="transactionDetails" component={TransactionDetailsScreen} />
         <Stack.Screen name="personalInfo" component={PersonalInfoScreen} />
         <Stack.Screen name="preferences" component={PreferencesScreen} />
 
         {/* Profile Settings Stack */}
         <Stack.Screen name="verification" component={VerificationScreen} />
         <Stack.Screen name="security" component={SecurityScreen} />
+        <Stack.Screen name="mfaSettings" component={MfaSettingsScreen} />
         <Stack.Screen name="accountLimits" component={AccountLimitsScreen} />
         <Stack.Screen name="transactionFees" component={TransactionFeesScreen} />
         <Stack.Screen name="notificationSettings" component={NotificationSettingsScreen} />
@@ -203,6 +233,13 @@ const App = () => {
         <Stack.Screen name="deviceHistory" component={DeviceHistoryScreen} />
         <Stack.Screen name="contactUs" component={ContactUsScreen} />
         <Stack.Screen name="termsConditions" component={TermsConditionsScreen} />
+        <Stack.Screen name="privacyPolicy" component={PrivacyPolicyScreen} />
+        <Stack.Screen name="faq" component={FaqScreen} />
+        <Stack.Screen name="liveSupportChat" component={LiveSupportChatScreen} />
+        <Stack.Screen name="stock" component={StocksScreen} />
+        <Stack.Screen name="stocks" component={StocksScreen} />
+        <Stack.Screen name="qrTransfer" component={QRTransferScreen} />
+        <Stack.Screen name="comingSoon" component={ComingSoonScreen} />
 
         {/* Homepage Feature Stack */}
         <Stack.Screen name="payBills" component={PayBillsScreenWithGate} />

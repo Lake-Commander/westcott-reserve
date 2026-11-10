@@ -22,6 +22,7 @@ import MpinVerificationModal from '../components/MpinVerificationModal';
 const TransferBankScreen = ({ navigation, route }) => {
   const currentUser = useSelector((state) => state.userReducer?.user);
   const { theme } = useAppTheme();
+  const accountCurrency = currentUser?.currency || 'USD';
 
   const [accountNumber, setAccountNumber] = useState('');
   const [selectedBank, setSelectedBank] = useState(null);
@@ -67,6 +68,11 @@ const TransferBankScreen = ({ navigation, route }) => {
   }, [route?.params]);
 
   const currentBalance = currentUser?.balance ? parseFloat(currentUser.balance) : 250000.0;
+  const formatCurrency = (value) => new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: accountCurrency,
+    minimumFractionDigits: 2,
+  }).format(value);
   const isAccComplete = accountNumber.trim().length >= 5;
 
   useEffect(() => {
@@ -144,7 +150,7 @@ const TransferBankScreen = ({ navigation, route }) => {
         bankName: selectedBank || 'Westcott Reserve Bank',
         amount: numAmt,
         note: transferNote,
-        currency: 'USD',
+        currency: accountCurrency,
         idempotencyKey,
       });
 
@@ -167,6 +173,7 @@ const TransferBankScreen = ({ navigation, route }) => {
           bank: selectedBank || 'Westcott Reserve Bank',
           sender_name: currentUser?.name || 'Account Holder',
           note: transferNote,
+          currency: accountCurrency,
           timestamp: receipt.timestamp || new Date().toISOString(),
         },
         returnTarget: 'transferBank',
@@ -329,7 +336,7 @@ const TransferBankScreen = ({ navigation, route }) => {
                 <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Amount</Text>
                 <View style={[styles.balPillContainer, { backgroundColor: theme.surfaceLight }]}>
                   <Text style={[styles.balPillText, { color: theme.textSecondary }]}>
-                    Bal: {showBal ? `$${currentBalance.toLocaleString()}` : '••••••••'}
+                    Bal: {showBal ? formatCurrency(currentBalance) : '••••••••'}
                   </Text>
                   <TouchableOpacity onPress={() => setShowBal(!showBal)}>
                     <Ionicons
@@ -401,6 +408,7 @@ const TransferBankScreen = ({ navigation, route }) => {
         amount={Number.isFinite(parseFloat(amount.replace(/,/g, '')))
           ? parseFloat(amount.replace(/,/g, '')).toFixed(2)
           : ''}
+        currency={accountCurrency}
         onCancel={() => setMpinPromptVisible(false)}
         onVerified={() => {
           setMpinPromptVisible(false);

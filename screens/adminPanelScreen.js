@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,6 +20,9 @@ import {
   UI_ACTIONS,
   UI_ACTION_BY_ID,
 } from '../services/appUiConfig';
+import { formatCurrencyAmount, getIndicativeFxRate } from '../services/fxRateService';
+import { requiresTotpChallenge, verifyCurrentTotpCode } from '../services/mfaService';
+import BrandLockup from '../components/BrandLockup';
 
 const COLORS = {
   background: '#F4F6FA',
@@ -63,6 +67,57 @@ async function callAdminEmailApi(payload) {
   return result;
 }
 
+async function sendPushNotifications(audienceUserId, title, message) {
+  const { data: tokenRows, error } = await supabase.rpc('admin_list_push_tokens', {
+    p_audience_user_id: audienceUserId,
+  });
+  if (error) throw error;
+
+  const tokens = [...new Set((tokenRows || []).map((row) => row.expo_push_token))];
+  if (tokens.length === 0) return 0;
+
+  for (let index = 0; index < tokens.length; index += 100) {
+    const messages = tokens.slice(index, index + 100).map((to) => ({
+      to,
+      title,
+      body: message,
+      sound: 'default',
+      channelId: 'default',
+      data: { screen: 'notifications' },
+    }));
+    const response = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Accept-Encoding': 'gzip, deflate',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(messages),
+    });
+    if (!response.ok) {
+      throw new Error(`Push service returned HTTP ${response.status}.`);
+    }
+    let result;
+    try {
+      result = await response.json();
+    } catch {
+      throw new Error('Push service returned an unreadable response.');
+    }
+    if (!Array.isArray(result.data) || result.data.length !== messages.length) {
+      throw new Error('Push service did not confirm every notification request.');
+    }
+    if (result.errors?.length) {
+      throw new Error(result.errors[0].message || 'The push service rejected the notification batch.');
+    }
+
+    const failedTicket = result.data?.find((ticket) => ticket.status === 'error');
+    if (failedTicket) {
+      throw new Error(failedTicket.message || 'The push service rejected a notification.');
+    }
+  }
+  return tokens.length;
+}
+
 function Button({ title, onPress, disabled, secondary, danger }) {
   return (
     <Pressable
@@ -91,6 +146,7 @@ function Field({
   multiline,
   secureTextEntry,
   maxLength,
+  editable = true,
   autoCapitalize = 'none',
 }) {
   return (
@@ -99,6 +155,7 @@ function Field({
       <TextInput
         accessibilityLabel={label}
         autoCapitalize={autoCapitalize}
+        editable={editable}
         multiline={multiline}
         maxLength={maxLength}
         onChangeText={onChangeText}
@@ -112,6 +169,135 @@ function Field({
   );
 }
 
+function CurrencyConversionPanel({ profile, disabled, onConverted }) {
+  const currentCurrency = (profile.currency || 'USD').toUpperCase();
+  const [targetCurrency, setTargetCurrency] = useState(currentCurrency === 'EUR' ? 'USD' : 'EUR');
+  const [rateInfo, setRateInfo] = useState(null);
+  const [rateBusy, setRateBusy] = useState(false);
+  const [convertBusy, setConvertBusy] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [statusMessage, setStatusMessage] = useState('');
+
+  useEffect(() => {
+    setTargetCurrency(currentCurrency === 'EUR' ? 'USD' : 'EUR');
+    setRateInfo(null);
+  }, [currentCurrency]);
+
+  const loadRate = async () => {
+    setRateBusy(true);
+    setErrorMessage('');
+    setStatusMessage('');
+    setRateInfo(null);
+    try {
+      const estimate = await getIndicativeFxRate(currentCurrency, targetCurrency);
+      setRateInfo(estimate);
+    } catch (error) {
+      setErrorMessage(error.message || 'Unable to retrieve an indicative rate.');
+    } finally {
+      setRateBusy(false);
+    }
+  };
+
+  const applyConversion = async () => {
+    if (!rateInfo) return;
+    const currentBalance = Number(profile.balance);
+    const estimatedBalance = currentBalance * rateInfo.rate;
+    const confirmationMessage =
+      `Convert this simulated account balance?\n\n${formatCurrencyAmount(currentBalance, currentCurrency)} → ${formatCurrencyAmount(estimatedBalance, targetCurrency)}\nRate date: ${rateInfo.rateDate}\n\nThis changes the stored demo balance and currency.`;
+    const confirmed =
+      typeof window !== 'undefined' && typeof window.confirm === 'function'
+      ? window.confirm(confirmationMessage)
+      : await new Promise((resolve) => {
+          Alert.alert('Confirm currency conversion', confirmationMessage, [
+            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Convert', onPress: () => resolve(true) },
+          ], { onDismiss: () => resolve(false) });
+        });
+    if (!confirmed) {
+      return;
+    }
+
+    setConvertBusy(true);
+    setErrorMessage('');
+    setStatusMessage('');
+    try {
+      const { error } = await supabase.rpc('admin_convert_profile_currency', {
+        p_user_id: profile.id,
+        p_expected_currency: currentCurrency,
+        p_target_currency: targetCurrency,
+        p_conversion_rate: rateInfo.rate,
+        p_rate_date: rateInfo.rateDate,
+      });
+      if (error) throw error;
+      setStatusMessage('Simulated account currency converted and recorded in the admin audit log.');
+      setRateInfo(null);
+      try {
+        await onConverted();
+      } catch {
+        setErrorMessage('The conversion succeeded, but the account list could not be refreshed.');
+      }
+    } catch (error) {
+      setErrorMessage(error.message || 'Unable to convert this account balance.');
+    } finally {
+      setConvertBusy(false);
+    }
+  };
+
+  const parsedBalance = Number(profile.balance);
+  const estimatedBalance = rateInfo && Number.isFinite(parsedBalance)
+    ? parsedBalance * rateInfo.rate
+    : null;
+
+  return (
+    <View style={styles.currencyConversion}>
+      <Text style={styles.currencyConversionTitle}>Convert simulated main balance</Text>
+      <Text style={styles.mutedText}>
+        Current balance: {formatCurrencyAmount(profile.balance, currentCurrency)}
+      </Text>
+      <Field
+        label="Target currency code"
+        value={targetCurrency}
+        onChangeText={(value) => {
+          setTargetCurrency(value.replace(/[^a-z]/gi, '').toUpperCase().slice(0, 3));
+          setRateInfo(null);
+          setStatusMessage('');
+        }}
+        placeholder="EUR"
+        maxLength={3}
+        editable={!rateBusy && !convertBusy}
+      />
+      <View style={styles.stateButtons}>
+        <Button
+          title={rateBusy ? 'Loading estimate…' : 'Get reference estimate'}
+          onPress={loadRate}
+          disabled={disabled || rateBusy || convertBusy || targetCurrency.length !== 3}
+          secondary
+        />
+      </View>
+      {rateInfo && (
+        <View style={styles.ratePreview}>
+          <Text style={styles.bodyText}>
+            1 {currentCurrency} = {rateInfo.rate.toFixed(6)} {targetCurrency}
+          </Text>
+          <Text style={styles.mutedText}>
+            Estimated converted balance: {formatCurrencyAmount(estimatedBalance, targetCurrency)}
+          </Text>
+          <Text style={styles.mutedText}>
+            Reference rate dated {rateInfo.rateDate}. Source: Frankfurter / ECB. Indicative only; not a live payment quote.
+          </Text>
+          <Button
+            title={convertBusy ? 'Converting…' : 'Confirm conversion'}
+            onPress={applyConversion}
+            disabled={disabled || convertBusy}
+          />
+        </View>
+      )}
+      {!!errorMessage && <Text style={styles.error}>{errorMessage}</Text>}
+      {!!statusMessage && <Text style={styles.success}>{statusMessage}</Text>}
+    </View>
+  );
+}
+
 export default function AdminPanelScreen() {
   const { width } = useWindowDimensions();
   const isWide = width >= 980;
@@ -121,8 +307,11 @@ export default function AdminPanelScreen() {
   const [checking, setChecking] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaRequired, setMfaRequired] = useState(false);
   const [section, setSection] = useState('Overview');
   const [profiles, setProfiles] = useState([]);
+  const [transferRestrictedIds, setTransferRestrictedIds] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [supportMessages, setSupportMessages] = useState([]);
   const [features, setFeatures] = useState([]);
@@ -131,16 +320,22 @@ export default function AdminPanelScreen() {
   const [newBankCountry, setNewBankCountry] = useState('');
   const [auditEvents, setAuditEvents] = useState([]);
   const [pendingAccountChange, setPendingAccountChange] = useState(null);
+  const [selectedCurrencyConversionId, setSelectedCurrencyConversionId] = useState(null);
   const [selectedMessage, setSelectedMessage] = useState(null);
   const [reply, setReply] = useState('');
   const [noticeTitle, setNoticeTitle] = useState('');
   const [noticeMessage, setNoticeMessage] = useState('');
   const [noticeUserId, setNoticeUserId] = useState('');
   const [emailNotification, setEmailNotification] = useState(false);
+  const [pushNotification, setPushNotification] = useState(true);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState('');
   const [feedbackError, setFeedbackError] = useState(false);
   const [loadError, setLoadError] = useState('');
+
+  const returnToWebsite = () => {
+    if (typeof window !== 'undefined') window.location.assign('/');
+  };
 
   const checkSession = useCallback(async () => {
     setChecking(true);
@@ -153,8 +348,15 @@ export default function AdminPanelScreen() {
       setSession(activeSession);
       if (!activeSession) {
         setAuthorized(false);
+        setMfaRequired(false);
         return;
       }
+      if (await requiresTotpChallenge()) {
+        setMfaRequired(true);
+        setAuthorized(false);
+        return;
+      }
+      setMfaRequired(false);
       const { data: isAdmin, error: adminError } = await supabase.rpc('is_admin');
       if (adminError) throw adminError;
       setAuthorized(isAdmin === true);
@@ -169,7 +371,15 @@ export default function AdminPanelScreen() {
 
   const loadData = useCallback(async () => {
     setLoadError('');
-    const [profileResult, transactionResult, supportResult, featureResult, auditResult, uiConfigResult] =
+    const [
+      profileResult,
+      transactionResult,
+      supportResult,
+      featureResult,
+      auditResult,
+      uiConfigResult,
+      transferRestrictionResult,
+    ] =
       await Promise.all([
         supabase.rpc('admin_list_profiles'),
         supabase
@@ -193,6 +403,7 @@ export default function AdminPanelScreen() {
           .select('config')
           .eq('id', 'default')
           .maybeSingle(),
+        supabase.from('account_transfer_restrictions').select('user_id'),
       ]);
 
     const failed = [
@@ -202,11 +413,13 @@ export default function AdminPanelScreen() {
       featureResult,
       auditResult,
       uiConfigResult,
+      transferRestrictionResult,
     ].find(
       (result) => result.error
     );
     if (failed) throw failed.error;
     setProfiles(profileResult.data || []);
+    setTransferRestrictedIds((transferRestrictionResult.data || []).map((row) => row.user_id));
     setTransactions(transactionResult.data || []);
     setSupportMessages(supportResult.data || []);
     setFeatures(featureResult.data || []);
@@ -249,6 +462,27 @@ export default function AdminPanelScreen() {
     }
   };
 
+  const verifyAdminMfa = async () => {
+    if (mfaCode.trim().length !== 6) {
+      setFeedback('Enter the current 6-digit authenticator code.');
+      setFeedbackError(true);
+      return;
+    }
+    setBusy(true);
+    setFeedback('');
+    setFeedbackError(false);
+    try {
+      await verifyCurrentTotpCode(mfaCode);
+      setMfaCode('');
+      await checkSession();
+    } catch (error) {
+      setFeedback(error.message || 'Authenticator verification failed.');
+      setFeedbackError(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const signOut = async () => {
     setBusy(true);
     try {
@@ -256,6 +490,8 @@ export default function AdminPanelScreen() {
       if (error) throw error;
       setSession(null);
       setAuthorized(false);
+      setMfaRequired(false);
+      setMfaCode('');
     } catch (error) {
       setFeedback(error.message || 'Unable to sign out.');
       setFeedbackError(true);
@@ -291,6 +527,51 @@ export default function AdminPanelScreen() {
       },
       'Transaction review status updated and recorded.'
     );
+
+  const setAccountTransferRestriction = async (profile, restricted) => {
+    setBusy(true);
+    setFeedback('');
+    setFeedbackError(false);
+    try {
+      const { error } = await supabase.rpc('admin_set_account_transfer_restriction', {
+        p_user_id: profile.id,
+        p_restricted: restricted,
+      });
+      if (error) throw error;
+
+      let actionMessage = restricted
+        ? 'Outgoing transfers are blocked for this account.'
+        : 'Outgoing transfers are enabled for this account.';
+      let emailFailed = false;
+      if (restricted) {
+        try {
+          await callAdminEmailApi({
+            type: 'transfer_restriction',
+            audienceUserId: profile.id,
+          });
+          actionMessage += ' The account notification email was sent.';
+        } catch (error) {
+          emailFailed = true;
+          actionMessage += ` The restriction is active, but the email could not be sent: ${error.message}`;
+        }
+      }
+
+      let refreshFailed = false;
+      try {
+        await loadData();
+      } catch (error) {
+        refreshFailed = true;
+        actionMessage += ` The restriction change succeeded, but the account list could not refresh: ${error.message}`;
+      }
+      setFeedback(actionMessage);
+      setFeedbackError(emailFailed || refreshFailed);
+    } catch (error) {
+      setFeedback(error.message || 'Unable to update the account transfer restriction.');
+      setFeedbackError(true);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const saveReply = async () => {
     if (!selectedMessage || !reply.trim()) return;
@@ -344,7 +625,7 @@ export default function AdminPanelScreen() {
       let status = audienceUserId
         ? 'Account notification published.'
         : 'Broadcast notification published.';
-      let emailFailed = false;
+      let deliveryFailed = false;
       if (emailNotification) {
         try {
           await callAdminEmailApi({
@@ -356,15 +637,30 @@ export default function AdminPanelScreen() {
           status += ' Email delivery accepted.';
         } catch (emailError) {
           status += ` Email delivery failed: ${emailError.message}`;
-          emailFailed = true;
+          deliveryFailed = true;
         }
       }
       setNoticeTitle('');
       setNoticeMessage('');
       setNoticeUserId('');
       setEmailNotification(false);
+      if (pushNotification) {
+        try {
+          const delivered = await sendPushNotifications(
+            audienceUserId,
+            noticeTitle.trim(),
+            noticeMessage.trim()
+          );
+          status += delivered > 0
+            ? ` Push sent to ${delivered} opted-in device${delivered === 1 ? '' : 's'}.`
+            : ' No opted-in devices were available for push delivery.';
+        } catch (pushError) {
+          status += ` Push delivery failed: ${pushError.message}`;
+          deliveryFailed = true;
+        }
+      }
       setFeedback(status);
-      setFeedbackError(emailFailed);
+      setFeedbackError(deliveryFailed);
     } catch (error) {
       setFeedback(error.message || 'Unable to publish the notification.');
       setFeedbackError(true);
@@ -533,12 +829,33 @@ export default function AdminPanelScreen() {
     return (
       <View style={styles.authPage}>
         <View style={styles.authCard}>
-          <Text style={styles.eyebrow}>WESTCOTT RESERVE</Text>
+          <Pressable onPress={returnToWebsite} style={styles.authBrandLink}>
+            <BrandLockup subtitle="ADMINISTRATION" />
+          </Pressable>
           <Text style={styles.title}>Admin console</Text>
           <Text style={styles.mutedText}>
             Sign in with an account that has been explicitly granted admin access.
           </Text>
-          {session ? (
+          {mfaRequired ? (
+            <>
+              <Text style={styles.mutedText}>
+                Enter the current code from your authenticator app to continue.
+              </Text>
+              <Field
+                label="Authenticator code"
+                value={mfaCode}
+                onChangeText={setMfaCode}
+                placeholder="6-digit code"
+                maxLength={6}
+              />
+              <Button
+                title={busy ? 'Verifying…' : 'Verify and continue'}
+                onPress={verifyAdminMfa}
+                disabled={busy}
+              />
+              <Button title="Cancel and sign out" onPress={signOut} disabled={busy} secondary />
+            </>
+          ) : session ? (
             <>
               <Text style={feedbackError ? styles.error : styles.feedback}>
                 {feedbackError
@@ -561,6 +878,10 @@ export default function AdminPanelScreen() {
             </>
           )}
           {!!feedback && <Text style={feedbackError ? styles.error : styles.feedback}>{feedback}</Text>}
+          <Pressable accessibilityRole="link" onPress={returnToWebsite} style={styles.publicSiteLink}>
+            <Ionicons name="arrow-back-outline" size={15} color={COLORS.primary} />
+            <Text style={styles.publicSiteLinkText}>Return to main website</Text>
+          </Pressable>
         </View>
       </View>
     );
@@ -577,13 +898,7 @@ export default function AdminPanelScreen() {
         {isWide && (
           <View style={styles.sidebar}>
             <View style={styles.brand}>
-              <View style={styles.brandMark}>
-                <Text style={styles.brandMarkText}>W</Text>
-              </View>
-              <View>
-                <Text style={styles.brandName}>WESTCOTT</Text>
-                <Text style={styles.brandCaption}>RESERVE · ADMIN</Text>
-              </View>
+              <BrandLockup dark subtitle="RESERVE · ADMIN" />
             </View>
             <Text style={styles.sidebarLabel}>WORKSPACE</Text>
             <View style={styles.sidebarNav}>
@@ -611,6 +926,15 @@ export default function AdminPanelScreen() {
                   <Text style={styles.identityRole}>Administrator</Text>
                 </View>
               </View>
+              <Pressable
+                accessibilityRole="link"
+                onPress={returnToWebsite}
+                style={styles.sidebarWebsiteLink}
+              >
+                <Ionicons name="globe-outline" size={16} color="#C4CAD4" />
+                <Text style={styles.sidebarWebsiteText}>Main website</Text>
+                <Ionicons name="arrow-forward-outline" size={14} color="#8995A8" />
+              </Pressable>
               <Button title="Sign out" onPress={signOut} disabled={busy} secondary />
             </View>
           </View>
@@ -619,23 +943,27 @@ export default function AdminPanelScreen() {
         <View style={styles.workspace}>
           <View style={[styles.topBar, isWide && styles.desktopTopBar]}>
             {!isWide && (
-              <View style={styles.mobileBrand}>
-                <View style={styles.brandMark}>
-                  <Text style={styles.brandMarkText}>W</Text>
-                </View>
-                <View>
-                  <Text style={styles.brandName}>WESTCOTT RESERVE</Text>
-                  <Text style={styles.brandCaption}>ADMIN CONSOLE</Text>
-                </View>
+              <View accessibilityLabel="Westcott Reserve admin" style={styles.mobileBrand}>
+                <BrandLockup compact iconSize={34} dark />
               </View>
             )}
             <View style={styles.pageHeading}>
               {isWide && <Text style={styles.eyebrow}>ADMINISTRATION / WORKSPACE</Text>}
               <Text style={styles.title}>{section}</Text>
             </View>
-            {!isWide && (
-              <Button title="Sign out" onPress={signOut} disabled={busy} secondary />
-            )}
+            <View style={styles.topBarActions}>
+              <Pressable
+                accessibilityRole="link"
+                onPress={returnToWebsite}
+                style={styles.topWebsiteLink}
+              >
+                <Ionicons name="globe-outline" size={15} color={COLORS.primary} />
+                <Text style={styles.topWebsiteLinkText}>Website</Text>
+              </Pressable>
+              {!isWide && (
+                <Button title="Sign out" onPress={signOut} disabled={busy} secondary />
+              )}
+            </View>
           </View>
 
           {!isWide && (
@@ -743,15 +1071,58 @@ export default function AdminPanelScreen() {
           <>
             <Text style={styles.sectionTitle}>Customer accounts</Text>
             <Text style={styles.mutedText}>
-              Suspending an account blocks sign-in and the app's gated features. The change is audited.
+              Suspending an account blocks sign-in. Blocking outgoing transfers keeps the account accessible, rejects debit attempts, and emails the customer with support instructions.
             </Text>
             {profiles.map((profile) => (
               <Card key={profile.id} title={profile.name || profile.email}>
                 <Text style={styles.mutedText}>{profile.email}</Text>
                 <Text style={styles.mutedText}>Account ID: {profile.id}</Text>
                 <Text style={styles.mutedText}>
+                  Main balance: {formatCurrencyAmount(profile.balance, profile.currency || 'USD')}
+                </Text>
+                <Text style={styles.mutedText}>
                   Status: {profile.is_active ? 'Active' : 'Suspended'}
                 </Text>
+                <Text style={styles.mutedText}>
+                  Outgoing transfers: {transferRestrictedIds.includes(profile.id) ? 'Restricted' : 'Allowed'}
+                </Text>
+                <Button
+                  title={
+                    transferRestrictedIds.includes(profile.id)
+                      ? 'Allow outgoing transfers'
+                      : 'Block outgoing transfers and email customer'
+                  }
+                  onPress={() =>
+                    setAccountTransferRestriction(
+                      profile,
+                      !transferRestrictedIds.includes(profile.id)
+                    )
+                  }
+                  disabled={busy}
+                  secondary={!transferRestrictedIds.includes(profile.id)}
+                  danger={!transferRestrictedIds.includes(profile.id)}
+                />
+                <Button
+                  title={
+                    selectedCurrencyConversionId === profile.id
+                      ? 'Close currency conversion'
+                      : 'Convert main balance currency'
+                  }
+                  onPress={() =>
+                    setSelectedCurrencyConversionId((current) =>
+                      current === profile.id ? null : profile.id
+                    )
+                  }
+                  disabled={busy}
+                  secondary
+                />
+                {selectedCurrencyConversionId === profile.id && (
+                  <CurrencyConversionPanel
+                    profile={profile}
+                    disabled={busy}
+                    onConverted={loadData}
+                  />
+                )}
                 {pendingAccountChange?.id === profile.id ? (
                   <View style={styles.stateButtons}>
                     <Button
@@ -1146,6 +1517,18 @@ export default function AdminPanelScreen() {
                 placeholder="Leave blank to notify all accounts"
               />
               <View style={styles.switchRow}>
+                <Text style={styles.bodyText}>Also send push to opted-in devices</Text>
+                <Switch
+                  accessibilityLabel="Also send push notifications"
+                  onValueChange={setPushNotification}
+                  value={pushNotification}
+                  trackColor={{ true: COLORS.primary }}
+                />
+              </View>
+              <Text style={styles.mutedText}>
+                Push alerts are sent only to devices that have granted permission and enabled push notifications.
+              </Text>
+              <View style={styles.switchRow}>
                 <Text style={styles.bodyText}>Also email recipients via Brevo</Text>
                 <Switch
                   accessibilityLabel="Also email notification recipients"
@@ -1291,6 +1674,18 @@ const styles = StyleSheet.create({
   navBadgeText: { color: '#CBD5E1', fontSize: 11, fontWeight: '700' },
   navBadgeTextActive: { color: '#FFFFFF' },
   sidebarBottom: { gap: 14, borderTopWidth: 1, borderTopColor: '#273244', paddingTop: 16 },
+  sidebarWebsiteLink: {
+    minHeight: 38,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#303B4D',
+    backgroundColor: '#192335',
+  },
+  sidebarWebsiteText: { flex: 1, color: '#C4CAD4', fontSize: 12, fontWeight: '600' },
   adminIdentity: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   avatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#344054', alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
@@ -1316,6 +1711,9 @@ const styles = StyleSheet.create({
     padding: 28,
     gap: 12,
   },
+  authBrandLink: { flexDirection: 'row', alignItems: 'center', gap: 10, alignSelf: 'flex-start' },
+  publicSiteLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 8, marginTop: 2 },
+  publicSiteLinkText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
   centered: { flex: 1, minHeight: '100vh', alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: COLORS.background },
   topBar: {
     minHeight: 80,
@@ -1326,6 +1724,20 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 16,
   },
+  topBarActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  topWebsiteLink: {
+    minHeight: 38,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 11,
+    borderRadius: 9,
+    backgroundColor: '#F1F4FB',
+    borderWidth: 1,
+    borderColor: '#E1E6F0',
+  },
+  topWebsiteLinkText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
   desktopTopBar: {
     minHeight: 106,
     paddingHorizontal: 36,
@@ -1333,7 +1745,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
-  mobileBrand: { flexDirection: 'row', alignItems: 'center', gap: 9, flex: 1, minWidth: 0 },
+  mobileBrand: { flexDirection: 'row', alignItems: 'center', flexShrink: 0, minWidth: 38 },
   pageHeading: { flex: 1 },
   eyebrow: { color: COLORS.primary, fontSize: 10, fontWeight: '800', letterSpacing: 1.2, marginBottom: 5 },
   title: { color: COLORS.ink, fontSize: 23, fontWeight: '800' },
@@ -1352,6 +1764,22 @@ const styles = StyleSheet.create({
   cardTitle: { color: COLORS.ink, fontSize: 16, fontWeight: '700' },
   bodyText: { color: COLORS.ink, fontSize: 14, lineHeight: 21 },
   mutedText: { color: COLORS.muted, fontSize: 13, lineHeight: 19 },
+  currencyConversion: {
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    marginTop: 4,
+    paddingTop: 12,
+    gap: 10,
+  },
+  currencyConversionTitle: { color: COLORS.ink, fontSize: 14, fontWeight: '700' },
+  ratePreview: {
+    backgroundColor: '#F8FAFC',
+    borderColor: COLORS.border,
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 12,
+    gap: 10,
+  },
   field: { gap: 6 },
   fieldLabel: { color: COLORS.ink, fontSize: 13, fontWeight: '600' },
   input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: COLORS.ink, backgroundColor: '#FFFFFF', fontSize: 14 },

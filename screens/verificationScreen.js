@@ -15,7 +15,7 @@ const VerificationScreen = ({ navigation }) => {
         style={[styles.row, { borderBottomColor: isLast ? 'transparent' : theme.cardBorder }]}
         onPress={() => {
           if (!isVerified) {
-            Alert.alert(label, `Initiate ${label} upload process.`);
+            Alert.alert(label, 'Document submission and verification are not configured in this prototype.');
           }
         }}
         disabled={isVerified}
@@ -66,13 +66,15 @@ const VerificationScreen = ({ navigation }) => {
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <Text style={[styles.title, { color: theme.textPrimary }]}>Verification</Text>
+        <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+          These checks are account-profile placeholders. No documents are collected or verified.
+        </Text>
 
         <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-          {renderItem('shield-checkmark-outline', 'BVN', 'Verified')}
-          {renderItem('card-outline', 'NIN', 'Verified')}
-          {renderItem('location-outline', 'Address Verification', 'Pending')}
-          {renderItem('person-add-outline', 'Next of Kin Details', 'Pending')}
-          {renderItem('wallet-outline', 'Wealth Declaration', 'Pending', true)}
+          {renderItem('card-outline', 'National ID', 'Not started')}
+          {renderItem('location-outline', 'Address Verification', 'Not started')}
+          {renderItem('person-add-outline', 'Next of Kin', 'Not started')}
+          {renderItem('wallet-outline', 'Wealth Declaration', 'Not started', true)}
         </View>
       </ScrollView>
     </ScreenWrapper>
@@ -93,6 +95,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 40 },
   title: { fontSize: 24, fontWeight: '800', marginBottom: 20 },
+  subtitle: { fontSize: 13, lineHeight: 19, marginTop: -12, marginBottom: 18 },
   card: { borderRadius: 20, paddingHorizontal: 16, borderWidth: 1 },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 18, borderBottomWidth: 1 },
   leftCol: { flexDirection: 'row', alignItems: 'center', gap: 14 },

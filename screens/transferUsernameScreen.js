@@ -22,6 +22,7 @@ import MpinVerificationModal from '../components/MpinVerificationModal';
 const TransferUsernameScreen = ({ navigation, route }) => {
   const { theme } = useAppTheme();
   const currentUser = useSelector((state) => state.userReducer?.user);
+  const accountCurrency = currentUser?.currency || 'USD';
   const [username, setUsername] = useState('');
   const [amount, setAmount] = useState('');
   const [saveRecipient, setSaveRecipient] = useState(false);
@@ -128,7 +129,7 @@ const TransferUsernameScreen = ({ navigation, route }) => {
         bankName: 'Westcott Reserve Bank',
         amount: numAmt,
         note: 'Username Transfer',
-        currency: 'USD',
+        currency: accountCurrency,
         idempotencyKey,
       });
 
@@ -151,6 +152,7 @@ const TransferUsernameScreen = ({ navigation, route }) => {
           bank: 'Westcott Reserve Bank',
           sender_name: currentUser?.name || 'Account Holder',
           note: 'Username Transfer',
+          currency: accountCurrency,
           timestamp: result.timestamp || new Date().toISOString(),
         },
         returnTarget: 'transferUsername',
@@ -271,7 +273,7 @@ const TransferUsernameScreen = ({ navigation, route }) => {
 
           {resolvedUser && !resolvedUser.isSelf && (
             <View style={{ marginTop: 18 }}>
-              <Text style={[styles.label, { color: theme.textPrimary }]}>Amount (USD)</Text>
+              <Text style={[styles.label, { color: theme.textPrimary }]}>Amount ({accountCurrency})</Text>
               <View style={[styles.inputBox, { marginTop: 6, backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}>
                 <TextInput
                   style={[styles.input, { color: theme.textPrimary }]}
@@ -316,6 +318,7 @@ const TransferUsernameScreen = ({ navigation, route }) => {
         amount={Number.isFinite(parseFloat(amount.replace(/,/g, '')))
           ? parseFloat(amount.replace(/,/g, '')).toFixed(2)
           : ''}
+        currency={accountCurrency}
         onCancel={() => setMpinPromptVisible(false)}
         onVerified={() => {
           setMpinPromptVisible(false);

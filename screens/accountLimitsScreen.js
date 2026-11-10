@@ -1,5 +1,5 @@
 // screens/accountLimitsScreen.js
-import React, { useState } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ScreenWrapper from '../components/ScreenWrapper';
@@ -7,8 +7,6 @@ import { useAppTheme } from '../hooks/useAppTheme';
 
 const AccountLimitsScreen = ({ navigation }) => {
   const { theme } = useAppTheme();
-  const [selectedTier, setSelectedTier] = useState('Tier 1');
-
   return (
     <ScreenWrapper>
       <View style={styles.topBar}>
@@ -24,33 +22,19 @@ const AccountLimitsScreen = ({ navigation }) => {
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <Text style={[styles.title, { color: theme.textPrimary }]}>Account Limits</Text>
 
-        {/* Tier Selector Pills */}
-        <View style={[styles.tierBar, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-          {['Tier 1', 'Tier 2', 'Tier 3', 'Tier 4'].map((tier) => (
-            <TouchableOpacity
-              key={tier}
-              style={[
-                styles.tierTab,
-                selectedTier === tier && [styles.activeTierTab, { backgroundColor: theme.surfaceLight }],
-              ]}
-              onPress={() => setSelectedTier(tier)}
-            >
-              <Text style={[styles.tierTabText, { color: selectedTier === tier ? theme.textPrimary : theme.textMuted }]}>
-                {tier}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
         {/* Tier Details Card */}
         <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
           <View style={styles.cardHeader}>
             <View>
-              <Text style={[styles.cardHeaderTitle, { color: theme.textPrimary }]}>BVN Verification</Text>
-              <Text style={styles.completedBadge}>✓ {selectedTier} completed</Text>
+              <Text style={[styles.cardHeaderTitle, { color: theme.textPrimary }]}>Tier 1 Account</Text>
+              <Text style={styles.completedBadge}>Current prototype tier</Text>
             </View>
             <Ionicons name="ribbon" size={32} color="#D4AF37" />
           </View>
+
+          <Text style={[styles.limitLabel, { color: theme.textSecondary }]}>
+            Limits shown below are illustrative and are not linked to identity verification.
+          </Text>
 
           <View style={[styles.divider, { backgroundColor: theme.cardBorder }]} />
 
@@ -89,10 +73,6 @@ const styles = StyleSheet.create({
   backCircle: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
   scrollContent: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 40 },
   title: { fontSize: 24, fontWeight: '800', marginBottom: 20 },
-  tierBar: { flexDirection: 'row', borderRadius: 16, padding: 4, borderWidth: 1, marginBottom: 20 },
-  tierTab: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 12 },
-  activeTierTab: { borderWidth: 1, borderColor: 'rgba(112, 82, 255, 0.2)' },
-  tierTabText: { fontSize: 12, fontWeight: '700' },
   card: { borderRadius: 20, padding: 20, borderWidth: 1 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   cardHeaderTitle: { fontSize: 16, fontWeight: '800' },

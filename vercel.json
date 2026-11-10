@@ -5,6 +5,26 @@
     {
       "source": "/admin",
       "destination": "/"
+    },
+    {
+      "source": "/download-app",
+      "destination": "/"
+    },
+    {
+      "source": "/download",
+      "destination": "/"
+    },
+    {
+      "source": "/privacy-policy",
+      "destination": "/"
+    },
+    {
+      "source": "/terms",
+      "destination": "/"
+    },
+    {
+      "source": "/faqs",
+      "destination": "/"
     }
   ],
   "headers": [
@@ -17,7 +37,7 @@
         },
         {
           "key": "Content-Disposition",
-          "value": "attachment; filename=\"westcott-reserve.apk\""
+          "value": "attachment; filename=\"Westcott Reserve.apk\""
         }
       ]
     }

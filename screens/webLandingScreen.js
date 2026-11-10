@@ -8,14 +8,17 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { WebAnchor } from "../components/WebAnchor";
+import BrandLockup from "../components/BrandLockup";
 
 const NAV_LINKS = [
-  { id: "experience", title: "Experience" },
-  { id: "features", title: "Features" },
-  { id: "download", title: "Download APK" },
-  { id: "how-it-works", title: "How it works" },
-  { id: "faq", title: "FAQ" },
+  { id: "experience", title: "Accounts" },
+  { id: "features", title: "Explore" },
+  { id: "privacy-policy", title: "Security", href: "/privacy-policy" },
+  { id: "faqs", title: "Support", href: "/faqs" },
+  { id: "download", title: "Get the app", href: "/download-app", cta: true },
 ];
 
 const FEATURES = [
@@ -23,46 +26,46 @@ const FEATURES = [
     icon: "01",
     title: "A familiar account dashboard",
     description:
-      "Explore a banking-inspired overview of balances, account details, and recent activity using simulated demo data.",
+      "See account information and activity in a clean, easy-to-navigate overview.",
   },
   {
     icon: "02",
     title: "Cards and spending controls",
     description:
-      "Preview card-management screens and common spending controls in a safe, non-financial prototype.",
+      "Review card options and controls with helpful account-level details.",
   },
   {
     icon: "03",
     title: "Transfers, reimagined",
     description:
-      "Walk through transfer flows and sample receipts. No funds move and no payment rails are connected.",
+      "Follow a clear transfer journey and keep a record of account activity.",
   },
   {
     icon: "04",
     title: "Designed for everyday clarity",
     description:
-      "Browse account tools, history, profile settings, and helpful product information from one simple interface.",
+      "Keep everyday account tools, preferences, and support close at hand.",
   },
 ];
 
 const STEPS = [
   {
     number: "01",
-    title: "Explore the experience",
+    title: "Get started",
     description:
-      "Browse this overview, then open the app to see its interactive screens.",
+      "Create an account with your email and a secure password.",
   },
   {
     number: "02",
-    title: "Use demo information",
+    title: "Set your preferences",
     description:
-      "Create an account with test details in the configured Supabase project. Never use your real banking credentials.",
+      "Choose the settings and notifications that work for you.",
   },
   {
     number: "03",
-    title: "Try the prototype",
+    title: "Stay in control",
     description:
-      "Explore sample account features. Balances, cards, and transaction activity are simulations only.",
+      "Review your profile, devices, and recent account activity.",
   },
 ];
 
@@ -70,22 +73,37 @@ const FAQ_ITEMS = [
   {
     question: "Is Westcott Reserve a real bank?",
     answer:
-      "No. Westcott Reserve is an educational software prototype. It is not a bank or a financial institution, and it does not offer real accounts or financial services.",
+      "No. Westcott Reserve is a digital banking prototype, not a licensed bank or financial institution. It does not provide deposit accounts or regulated payment services.",
   },
   {
-    question: "Can I send money or use a real card?",
+    question: "Are balances, transfers, and cards real?",
     answer:
-      "No. Transfers, balances, card screens, and receipts are for demonstration. The app is not connected to real payment networks and must not be used to move or store money.",
+      "No. Balances, transfers, cards, receipts, and market information are illustrative features. They are not connected to payment networks, do not represent real funds, and cannot be used to make payments.",
   },
   {
-    question: "What information should I use to sign in?",
+    question: "What information should I use to create an account?",
     answer:
-      "Use test information and a unique password for this prototype. Do not enter real financial details, identity documents, or passwords used for other services.",
+      "Use a unique password and only the profile details needed to try the app. Do not submit payment credentials, identity documents, or passwords used for other services.",
   },
   {
-    question: "How is sign-in configured?",
+    question: "What information does the service process?",
     answer:
-      "Authentication and profile data use the Supabase project configured by the app operator. The operator is responsible for configuring that project and its access policies.",
+      "The configured service may process sign-in and profile details, app preferences, support messages, basic device-session details, and push-notification tokens when enabled. See the privacy policy for details.",
+  },
+  {
+    question: "Can I turn notifications off?",
+    answer:
+      "In-app and push notifications have separate settings. Push notifications require a supported device, notification permission, and completed project setup; you can also revoke permission in your device settings.",
+  },
+  {
+    question: "How can I contact customer care?",
+    answer:
+      "Use the customer-care form in the app or email support@westcottreserve.com. Do not include passwords, payment information, or identity documents in a support message.",
+  },
+  {
+    question: "Where can I get the Android app?",
+    answer:
+      "Visit the download page for the Android installer. This prototype is distributed outside Google Play; your device may ask you to allow installation from your browser. Only install it if you trust the source.",
   },
 ];
 
@@ -108,33 +126,50 @@ export default function WestcottWebLanding({ onLaunchApp }) {
     <ScrollView
       style={styles.page}
       contentContainerStyle={styles.pageContent}
+      stickyHeaderIndices={[0]}
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.heroSection} nativeID="home">
+      <View style={styles.siteHeaderWrap} nativeID="home">
         <View style={styles.shell}>
           <Header
             isDesktop={isDesktop}
             isMobile={isMobile}
             onLaunchApp={onLaunchApp}
           />
-          <Hero isDesktop={isDesktop} isMobile={isMobile} onLaunchApp={onLaunchApp} />
         </View>
       </View>
 
-      <View style={styles.noticeBand}>
-        <View style={[styles.shell, styles.noticeInner, isMobile && styles.stack]}>
-          <Notice title="An educational prototype" text="Not a bank or financial service" />
-          <Notice title="Simulated data" text="No real money or payments" />
-          <Notice title="Use test details" text="Never enter sensitive credentials" />
+      <View style={styles.heroSection}>
+        <LinearGradient
+          colors={["#0B1725", "#11253A", "#142B3A"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <View pointerEvents="none" style={styles.heroGlow} />
+        <View style={styles.shell}>
+          <Hero isDesktop={isDesktop} isMobile={isMobile} onLaunchApp={onLaunchApp} />
+          <View style={[styles.heroDisclosure, isMobile && styles.heroDisclosureMobile]}>
+            <View style={styles.heroDisclosureMark}>
+              <Ionicons name="information-outline" size={16} color="#E5CC99" />
+            </View>
+            <Text style={styles.heroDisclosureText}>
+              A digital finance experience — not a bank or a payment service.
+            </Text>
+            <WebAnchor href="/terms" target="_self" style={styles.heroDisclosureLink}>
+              <Text style={styles.heroDisclosureLinkText}>How it works</Text>
+              <Ionicons name="arrow-forward" size={13} color="#E5CC99" />
+            </WebAnchor>
+          </View>
         </View>
       </View>
 
       <View style={styles.section} nativeID="experience">
         <View style={styles.shell}>
           <SectionHeading
-            eyebrow="A more considered digital experience"
-            title="Everyday banking ideas, thoughtfully explored."
-            description="Westcott Reserve brings familiar account tools together in a polished, interactive prototype. Explore the experience without connecting real money."
+            eyebrow="Built around your day"
+            title="A more considered way to manage your money."
+            description="Bring your account overview, cards, transfers, and activity together in one clear digital experience."
             align="left"
           />
           <ExperiencePanel isMobile={isMobile} />
@@ -144,9 +179,9 @@ export default function WestcottWebLanding({ onLaunchApp }) {
       <View style={styles.featuresSection} nativeID="features">
         <View style={styles.shell}>
           <SectionHeading
-            eyebrow="Inside the experience"
-            title="The tools you’d expect. A safe place to explore."
-            description="A product concept for learning and demonstration—not a live banking service."
+            eyebrow="One connected experience"
+            title="Everyday money, made easier to navigate."
+            description="Find the details you need, understand what is happening, and manage your preferences in a few simple steps."
           />
           <View style={[styles.cardGrid, isMobile && styles.stack]}>
             {FEATURES.map((feature) => (
@@ -159,9 +194,9 @@ export default function WestcottWebLanding({ onLaunchApp }) {
       <View style={styles.section} nativeID="how-it-works">
         <View style={styles.shell}>
           <SectionHeading
-            eyebrow="Getting started"
-            title="Explore the prototype in three steps."
-            description="The experience is designed to be straightforward—from the first screen to the last."
+            eyebrow="Made to feel straightforward"
+            title="A simpler way to stay on top of things."
+            description="Thoughtful details make it easier to get started and find your way around."
           />
           <View style={[styles.stepsRow, isMobile && styles.stack]}>
             {STEPS.map((step) => (
@@ -180,12 +215,12 @@ export default function WestcottWebLanding({ onLaunchApp }) {
           <View style={styles.securityCopy}>
             <Text style={styles.eyebrowLight}>Built with care</Text>
             <Text style={styles.sectionTitleLight}>
-              Your real-world financial details don’t belong in a demo.
+              Your information deserves thoughtful care.
             </Text>
             <Text style={styles.bodyTextLight}>
-              Sign-in is powered by the Supabase project configured for this
-              prototype. Use test information only, and review the privacy
-              information below before creating an account.
+              Account access is protected with secure sign-in options, device
+              history, and notification controls. Read our privacy policy to
+              understand how information is handled by the service operator.
             </Text>
             <AuthAction onLaunchApp={onLaunchApp} style={styles.outlineAction}>
               <Text style={styles.outlineActionText}>Open the app</Text>
@@ -193,16 +228,16 @@ export default function WestcottWebLanding({ onLaunchApp }) {
           </View>
           <View style={styles.safetyCard}>
             <SafetyRow
-              title="Use a unique test password"
-              description="Do not reuse passwords from email, banking, or other accounts."
+              title="Account security"
+              description="Authenticator-based sign-in protection and device history help you keep track of access."
             />
             <SafetyRow
-              title="Keep personal data out"
-              description="Use sample details; don’t submit real financial or identity information."
+              title="Clear privacy information"
+              description="Understand how account and contact information is handled."
             />
             <SafetyRow
-              title="Remember what this is"
-              description="Displayed balances and activity are illustrative and have no cash value."
+              title="Your preferences"
+              description="Manage notifications and key account settings in one place."
               last
             />
           </View>
@@ -214,9 +249,9 @@ export default function WestcottWebLanding({ onLaunchApp }) {
       <View style={styles.section} nativeID="faq">
         <View style={styles.shell}>
           <SectionHeading
-            eyebrow="Good to know"
-            title="Frequently asked questions."
-            description="Important details about this demonstration project."
+            eyebrow="Here to help"
+            title="Questions, answered."
+            description="Find clear answers about accounts, access, and the features available here."
           />
           <View style={styles.faqGrid}>
             {FAQ_ITEMS.map((item) => (
@@ -232,36 +267,35 @@ export default function WestcottWebLanding({ onLaunchApp }) {
       <View style={styles.legalSection}>
         <View style={styles.shell}>
           <SectionHeading
-            eyebrow="Transparency"
-            title="Clear terms. Clear privacy information."
-            description="These summaries explain how this prototype is intended to be used. They are not a substitute for legal advice."
+            eyebrow="The important details"
+            title="Privacy and terms, clearly explained."
+            description="Read the policies that explain account access, information handling, and service availability."
             align="left"
           />
           <View style={[styles.legalGrid, isMobile && styles.stack]}>
             <View style={styles.legalCard} nativeID="terms">
-              <Text style={styles.legalTitle}>Terms of use</Text>
+              <Text style={styles.legalTitle}>Terms and conditions</Text>
               <Text style={styles.bodyText}>
-                Westcott Reserve is provided for educational and demonstration
-                purposes only. It is not a bank and does not provide deposit,
-                payment, credit, investment, or other financial services. Any
-                account, card, balance, transfer, or receipt shown is simulated
-                and has no monetary value. Do not rely on the prototype for
-                financial decisions or enter real banking or identity
-                information. The software is provided as-is; features may change
-                or be unavailable.
+                Westcott Reserve is not a licensed bank or financial institution.
+                Features displayed in this version are illustrative and are not
+                connected to real payment networks. Review the full terms before
+                using the service.
               </Text>
+              <WebAnchor href="/terms" target="_self" style={styles.policyLink}>
+                <Text style={styles.policyLinkText}>Read terms and conditions →</Text>
+              </WebAnchor>
             </View>
             <View style={styles.legalCard} nativeID="privacy">
-              <Text style={styles.legalTitle}>Privacy information</Text>
+              <Text style={styles.legalTitle}>Privacy policy</Text>
               <Text style={styles.bodyText}>
                 When you use sign-in, authentication and profile information are
-                handled by the Supabase project configured by the app operator.
-                The mobile app may store session and profile data on your
-                device. The operator controls the Supabase configuration,
-                access policies, and retention. Do not submit sensitive or
-                real-world financial information. For questions about data in a
-                configured instance, contact its operator.
+                handled by the Supabase project configured by the service
+                operator. The operator manages access controls, retention, and
+                connected service providers.
               </Text>
+              <WebAnchor href="/privacy-policy" target="_self" style={styles.policyLink}>
+                <Text style={styles.policyLinkText}>Read privacy policy →</Text>
+              </WebAnchor>
             </View>
           </View>
         </View>
@@ -281,21 +315,25 @@ function Header({ isDesktop, isMobile, onLaunchApp }) {
 
   return (
     <View style={styles.header}>
-      <WebAnchor href="#home" style={styles.brand}>
-        <View style={styles.brandMark}>
-          <Text style={styles.brandMarkText}>W</Text>
-        </View>
-        <View>
-          <Text style={styles.brandName}>WESTCOTT RESERVE</Text>
-          <Text style={styles.brandCaption}>A digital banking prototype</Text>
-        </View>
+      <WebAnchor href="/" target="_self" style={styles.brand}>
+        <BrandLockup dark subtitle="Digital finance" />
       </WebAnchor>
 
       {isDesktop ? (
         <View style={styles.navLinks}>
           {NAV_LINKS.map((link) => (
-            <WebAnchor key={link.id} href={`#${link.id}`} style={styles.navLink}>
-              <Text style={styles.navLinkText}>{link.title}</Text>
+            <WebAnchor
+              key={link.id}
+              href={link.href || `#${link.id}`}
+              target={link.href ? "_self" : "_blank"}
+              style={link.cta ? [styles.headerAction, styles.headerDownloadAction] : styles.navLink}
+            >
+              <Text style={link.cta
+                ? [styles.headerActionText, styles.headerDownloadActionText]
+                : styles.navLinkText}
+              >
+                {link.title}
+              </Text>
             </WebAnchor>
           ))}
           <AuthAction onLaunchApp={onLaunchApp} style={styles.headerAction}>
@@ -316,8 +354,20 @@ function Header({ isDesktop, isMobile, onLaunchApp }) {
           {menuOpen && (
             <View style={[styles.mobileMenu, isMobile && styles.mobileMenuNarrow]}>
               {NAV_LINKS.map((link) => (
-                <WebAnchor key={link.id} href={`#${link.id}`} style={styles.mobileMenuLink}>
-                  <Text style={styles.mobileMenuText}>{link.title}</Text>
+                <WebAnchor
+                  key={link.id}
+                  href={link.href || `#${link.id}`}
+                  target={link.href ? "_self" : "_blank"}
+                  style={link.cta
+                    ? [styles.headerAction, styles.headerDownloadAction, styles.mobileMenuAction]
+                    : styles.mobileMenuLink}
+                >
+                  <Text style={link.cta
+                    ? [styles.headerActionText, styles.headerDownloadActionText]
+                    : styles.mobileMenuText}
+                  >
+                    {link.title}
+                  </Text>
                 </WebAnchor>
               ))}
               <AuthAction
@@ -339,38 +389,65 @@ function Hero({ isDesktop, isMobile, onLaunchApp }) {
     <View style={[styles.hero, !isDesktop && styles.heroStack]}>
       <View style={[styles.heroCopy, !isDesktop && styles.fullWidth]}>
         <View style={styles.heroEyebrow}>
-          <View style={styles.heroDot} />
-          <Text style={styles.heroEyebrowText}>A DIGITAL BANKING PROTOTYPE</Text>
+          <Ionicons name="sparkles-outline" size={14} color="#E5CC99" />
+          <Text style={styles.heroEyebrowText}>A MORE CONSIDERED EXPERIENCE</Text>
         </View>
         <Text style={[styles.heroTitle, isMobile && styles.heroTitleMobile]}>
-          Banking,{"\n"}
-          <Text style={styles.heroTitleAccent}>reimagined for clarity.</Text>
+          Your finances,{"\n"}
+          <Text style={styles.heroTitleAccent}>in better focus.</Text>
         </Text>
         <Text style={styles.heroDescription}>
-          Explore a thoughtful, modern banking experience—built as an
-          educational prototype, with simulated accounts and activity.
+          A beautifully clear place to explore your accounts, follow activity,
+          and keep everyday tools close at hand.
         </Text>
         <View style={[styles.heroActions, isMobile && styles.heroActionsStack]}>
           <AuthAction onLaunchApp={onLaunchApp} style={styles.primaryAction}>
-            <Text style={styles.primaryActionText}>Explore the app</Text>
-            <Text style={styles.actionArrow}>→</Text>
+            <Text style={styles.primaryActionText}>Get started</Text>
+            <Ionicons name="arrow-forward" size={17} color="#142238" />
           </AuthAction>
-          <WebAnchor href="#features" style={styles.secondaryAction}>
-            <Text style={styles.secondaryActionText}>Discover the experience</Text>
+          <WebAnchor href="/download-app" target="_self" style={styles.secondaryAction}>
+            <Ionicons name="phone-portrait-outline" size={17} color="#FFFFFF" />
+            <Text style={styles.secondaryActionText}>Get the app</Text>
           </WebAnchor>
         </View>
-        <Text style={styles.heroFinePrint}>
-          No real accounts, deposits, or payments. Demo use only.
-        </Text>
+        <View style={[styles.heroHighlights, isMobile && styles.heroHighlightsMobile]}>
+          <View style={styles.heroHighlight}>
+            <Ionicons name="grid-outline" size={15} color="#D8B978" />
+            <Text style={styles.heroHighlightText}>Everything in one view</Text>
+          </View>
+          <View style={styles.heroHighlightDivider} />
+          <View style={styles.heroHighlight}>
+            <Ionicons name="shield-checkmark-outline" size={15} color="#D8B978" />
+            <Text style={styles.heroHighlightText}>Your preferences, your way</Text>
+          </View>
+        </View>
       </View>
-      <View style={[styles.heroVisual, !isDesktop && styles.heroVisualTablet]}>
-        <DemoDashboard />
+      <View style={[
+        styles.heroVisual,
+        !isDesktop && styles.heroVisualTablet,
+        isMobile && styles.heroVisualMobile,
+      ]}>
+        <View pointerEvents="none" style={styles.heroVisualRing} />
+        <View style={styles.previewFloat}>
+          <View style={styles.previewFloatIcon}>
+            <Ionicons name="sparkles" size={15} color="#15263B" />
+          </View>
+          <View>
+            <Text style={styles.previewFloatTitle}>A little more clarity</Text>
+            <Text style={styles.previewFloatCaption}>Designed around your day</Text>
+          </View>
+        </View>
+        <AccountOverviewGraphic />
+        <View style={styles.previewFoot}>
+          <Ionicons name="eye-outline" size={13} color="#E5CC99" />
+          <Text style={styles.previewFootText}>Illustrative interface preview</Text>
+        </View>
       </View>
     </View>
   );
 }
 
-function DemoDashboard() {
+function AccountOverviewGraphic() {
   return (
     <View style={styles.dashboard}>
       <View style={styles.dashboardTop}>
@@ -378,14 +455,18 @@ function DemoDashboard() {
           <Text style={styles.dashboardLabel}>WESTCOTT RESERVE</Text>
           <Text style={styles.dashboardTitle}>Your overview</Text>
         </View>
-        <View style={styles.demoBadge}>
-          <Text style={styles.demoBadgeText}>SAMPLE</Text>
-        </View>
+        <View style={styles.accountStatusPill}><View style={styles.accountStatusDot} /><Text style={styles.accountStatusText}>YOUR OVERVIEW</Text></View>
       </View>
       <View style={styles.balancePanel}>
-        <Text style={styles.balanceLabel}>Illustrative balance</Text>
-        <Text style={styles.balanceAmount}>$ 12,480.00</Text>
-        <Text style={styles.balanceNote}>Simulated demo value · not real funds</Text>
+        <Text style={styles.balanceLabel}>Your money, at a glance</Text>
+        <Text style={styles.balanceAmount}>More in view.</Text>
+        <Text style={styles.balanceNote}>Accounts · activity · preferences</Text>
+        <View style={styles.graphicChart}>
+          {[26, 34, 30, 45, 37, 51, 42, 63, 54, 72].map((height, index) => (
+            <View key={index} style={[styles.graphicChartBar, { height }]} />
+          ))}
+          <View style={styles.chartShine} />
+        </View>
       </View>
       <View style={styles.accountRow}>
         <View style={styles.accountIcon}>
@@ -393,9 +474,9 @@ function DemoDashboard() {
         </View>
         <View style={styles.accountCopy}>
           <Text style={styles.accountTitle}>Everyday account</Text>
-          <Text style={styles.accountSubtitle}>Sample activity</Text>
+          <Text style={styles.accountSubtitle}>Your account details</Text>
         </View>
-        <Text style={styles.accountAmount}>$ 1,250</Text>
+        <Ionicons name="chevron-forward" size={16} color="#AAB6C5" />
       </View>
       <View style={styles.accountDivider} />
       <View style={styles.accountRow}>
@@ -404,14 +485,9 @@ function DemoDashboard() {
         </View>
         <View style={styles.accountCopy}>
           <Text style={styles.accountTitle}>Virtual card</Text>
-          <Text style={styles.accountSubtitle}>Preview interface</Text>
+          <Text style={styles.accountSubtitle}>Manage card options</Text>
         </View>
-        <Text style={styles.cardLastFour}>•••• 2048</Text>
-      </View>
-      <View style={styles.dashboardFooter}>
-        <Text style={styles.dashboardFooterText}>
-          Illustrative interface · no live financial data
-        </Text>
+        <Ionicons name="chevron-forward" size={16} color="#AAB6C5" />
       </View>
     </View>
   );
@@ -451,20 +527,19 @@ function ExperiencePanel({ isMobile }) {
         <Text style={styles.panelEyebrow}>A clearer view of your finances</Text>
         <Text style={styles.panelTitle}>Designed around the details that matter.</Text>
         <Text style={styles.bodyText}>
-          A calm, considered interface helps make complex financial concepts
-          easier to explore. Every figure shown here is sample data created for
-          demonstration.
+          A calm, considered interface helps you see account information,
+          follow activity, and find the tools you need without extra clutter.
         </Text>
         <View style={styles.panelPills}>
-          <Text style={styles.panelPill}>Sample balances</Text>
-          <Text style={styles.panelPill}>Demo activity</Text>
-          <Text style={styles.panelPill}>No live accounts</Text>
+          <Text style={styles.panelPill}>Account overview</Text>
+          <Text style={styles.panelPill}>Clear activity</Text>
+          <Text style={styles.panelPill}>Personal controls</Text>
         </View>
       </View>
       <View style={styles.activityPanel}>
         <View style={styles.activityHeader}>
           <Text style={styles.activityTitle}>Recent activity</Text>
-          <Text style={styles.activityCaption}>EXAMPLE ONLY</Text>
+          <Text style={styles.activityCaption}>ACCOUNT ACTIVITY</Text>
         </View>
         <ActivityRow mark="↗" title="Sample transfer" detail="Illustrative entry" amount="− $42.00" />
         <ActivityRow mark="＋" title="Sample deposit" detail="Illustrative entry" amount="+ $180.00" positive />
@@ -524,26 +599,25 @@ function DownloadSection({ isMobile }) {
       <View style={[styles.shell, styles.downloadCard, isMobile && styles.downloadCardMobile]}>
         <View style={styles.downloadCopy}>
           <Text style={styles.eyebrow}>For Android</Text>
-          <Text style={styles.downloadTitle}>Take the prototype with you.</Text>
+          <Text style={styles.downloadTitle}>Your account, wherever you are.</Text>
           <Text style={styles.bodyText}>
-            Download the standalone Android app. It includes the app bundle and
-            does not require a computer or Metro server to launch.
+            Get the Westcott Reserve Android app and access your account tools
+            from your mobile device.
           </Text>
           <View style={styles.downloadMetaRow}>
             <Text style={styles.downloadMeta}>Android APK</Text>
             <Text style={styles.downloadMetaDot}>·</Text>
             <Text style={styles.downloadMeta}>ARM 32-bit and 64-bit</Text>
             <Text style={styles.downloadMetaDot}>·</Text>
-            <Text style={styles.downloadMeta}>Prototype only</Text>
+            <Text style={styles.downloadMeta}>Android 8.0 and up</Text>
           </View>
         </View>
         <WebAnchor
-          href="/downloads/westcott-reserve.apk"
-          download="westcott-reserve.apk"
+          href="/download-app"
           target="_self"
           style={[styles.downloadButton, isMobile && styles.downloadButtonMobile]}
         >
-          <Text style={styles.downloadButtonText}>Download Android APK</Text>
+          <Text style={styles.downloadButtonText}>View app and download</Text>
           <Text style={styles.downloadButtonArrow}>↓</Text>
         </WebAnchor>
       </View>
@@ -569,44 +643,40 @@ function Footer({ isMobile, onLaunchApp }) {
     <View>
       <View style={[styles.footerTop, isMobile && styles.stack]}>
         <View style={styles.footerBrandBlock}>
-          <WebAnchor href="#home" style={styles.brand}>
-            <View style={styles.footerBrandMark}>
-              <Text style={styles.brandMarkText}>W</Text>
-            </View>
-            <Text style={styles.footerBrandName}>WESTCOTT RESERVE</Text>
+          <WebAnchor href="/" target="_self" style={styles.brand}>
+            <BrandLockup dark subtitle="Digital finance" />
           </WebAnchor>
           <Text style={styles.footerTagline}>
-            A thoughtful digital banking concept.
+            Clarity for everyday finances.
           </Text>
           <Text style={styles.footerDisclaimer}>
-            Independent educational prototype. Not a bank or financial service.
+            Westcott Reserve is not a licensed financial institution. Features shown in this version
+            are illustrative and do not move or hold funds.
           </Text>
         </View>
         <View style={[styles.footerLinks, isMobile && styles.footerLinksMobile]}>
           <View style={styles.footerLinkColumn}>
             <Text style={styles.footerColumnTitle}>Explore</Text>
-            {NAV_LINKS.slice(0, 3).map((link) => (
-              <FooterLink key={link.id} href={`#${link.id}`} title={link.title} />
+            {NAV_LINKS.slice(0, 2).map((link) => (
+              <FooterLink key={link.id} href={link.href || `#${link.id}`} title={link.title} />
             ))}
+            <FooterLink href="/download-app" title="Get the app" />
             <AuthAction onLaunchApp={onLaunchApp} style={styles.footerLink}>
-              <Text style={styles.footerLinkText}>Open the app</Text>
+              <Text style={styles.footerLinkText}>Sign in</Text>
             </AuthAction>
           </View>
           <View style={styles.footerLinkColumn}>
             <Text style={styles.footerColumnTitle}>Information</Text>
-            <FooterLink href="#terms" title="Terms of use" />
-            <FooterLink href="#privacy" title="Privacy information" />
-            <FooterLink href="#faq" title="Frequently asked questions" />
+            <FooterLink href="/privacy-policy" title="Privacy policy" />
+            <FooterLink href="/terms" title="Terms and conditions" />
+            <FooterLink href="/faqs" title="FAQs" />
           </View>
         </View>
       </View>
       <View style={styles.footerBottom}>
         <Text style={styles.footerCopyright}>
-          © {new Date().getFullYear()} Westcott Reserve. For demonstration only.
+          © {new Date().getFullYear()} Westcott Reserve
         </Text>
-        <WebAnchor href="#home" style={styles.backToTop}>
-          <Text style={styles.backToTopText}>Back to top ↑</Text>
-        </WebAnchor>
       </View>
     </View>
   );
@@ -657,16 +727,74 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   heroSection: {
+    position: "relative",
+    overflow: "hidden",
     backgroundColor: "#0D1B2A",
-    paddingBottom: 86,
+    paddingBottom: 34,
+  },
+  heroGlow: {
+    position: "absolute",
+    width: 580,
+    height: 580,
+    borderRadius: 290,
+    top: -290,
+    right: -80,
+    backgroundColor: "transparent",
+    borderWidth: 1,
+    borderColor: "rgba(216,185,120,0.09)",
+  },
+  heroDisclosure: {
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 64,
+    paddingHorizontal: 16,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.12)",
+  },
+  heroDisclosureMobile: {
+    flexWrap: "wrap",
+    paddingTop: 15,
+    paddingBottom: 8,
+    marginTop: 42,
+  },
+  heroDisclosureMark: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 14,
+    backgroundColor: "rgba(216,185,120,0.12)",
+  },
+  heroDisclosureText: {
+    flex: 1,
+    color: "#C2CBD5",
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  heroDisclosureLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    paddingVertical: 8,
+  },
+  heroDisclosureLinkText: {
+    color: "#E5CC99",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  siteHeaderWrap: {
+    backgroundColor: "#0D1B2A",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.12)",
   },
   header: {
-    minHeight: 88,
+    minHeight: 76,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.12)",
+    gap: 18,
   },
   brand: {
     flexDirection: "row",
@@ -724,6 +852,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "800",
   },
+  headerDownloadAction: {
+    backgroundColor: "transparent",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.38)",
+  },
+  headerDownloadActionText: {
+    color: "#FFFFFF",
+  },
   menuContainer: {
     position: "relative",
     zIndex: 5,
@@ -778,8 +914,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 56,
-    paddingTop: 76,
+    gap: 48,
+    paddingTop: 86,
+    paddingBottom: 12,
   },
   heroStack: {
     flexDirection: "column",
@@ -789,79 +926,78 @@ const styles = StyleSheet.create({
   },
   heroCopy: {
     flex: 1,
-    maxWidth: 560,
+    maxWidth: 540,
   },
   heroEyebrow: {
     alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
-    gap: 9,
+    gap: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderWidth: 1,
     borderColor: "rgba(216,185,120,0.32)",
     backgroundColor: "rgba(216,185,120,0.08)",
     borderRadius: 24,
-    marginBottom: 24,
-  },
-  heroDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: "#D8B978",
+    marginBottom: 27,
   },
   heroEyebrowText: {
     color: "#E5CC99",
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "800",
     letterSpacing: 1,
   },
   heroTitle: {
     color: "#FFFFFF",
-    fontSize: 52,
-    lineHeight: 60,
-    fontWeight: "700",
-    letterSpacing: -1.6,
+    fontSize: 60,
+    lineHeight: 67,
+    fontWeight: "600",
+    letterSpacing: -2,
   },
   heroTitleMobile: {
-    fontSize: 40,
-    lineHeight: 47,
-    letterSpacing: -1,
+    fontSize: 42,
+    lineHeight: 48,
+    letterSpacing: -1.2,
   },
   heroTitleAccent: {
-    color: "#D8B978",
+    color: "#E0C27F",
   },
   heroDescription: {
     maxWidth: 500,
     color: "#C2CBD5",
     fontSize: 16,
-    lineHeight: 27,
-    marginTop: 22,
+    lineHeight: 28,
+    marginTop: 25,
   },
   heroActions: {
     flexDirection: "row",
     alignItems: "center",
     flexWrap: "wrap",
     gap: 12,
-    marginTop: 30,
+    marginTop: 32,
   },
   heroActionsStack: {
     flexDirection: "column",
     alignItems: "stretch",
   },
   primaryAction: {
-    minHeight: 52,
+    minHeight: 56,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 18,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    backgroundColor: "#D8B978",
+    gap: 16,
+    paddingHorizontal: 22,
+    borderRadius: 10,
+    backgroundColor: "#E0C27F",
+    shadowColor: "#E0C27F",
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
   },
   primaryActionText: {
     color: "#142238",
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "800",
   },
   actionArrow: {
@@ -871,6 +1007,9 @@ const styles = StyleSheet.create({
   },
   secondaryAction: {
     minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
     justifyContent: "center",
     paddingHorizontal: 16,
   },
@@ -886,27 +1025,123 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   heroVisual: {
-    width: "46%",
-    maxWidth: 490,
+    position: "relative",
+    width: "47%",
+    maxWidth: 510,
     minWidth: 360,
+    paddingTop: 52,
+    paddingBottom: 20,
+  },
+  heroHighlights: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 14,
+    marginTop: 26,
+  },
+  heroHighlightsMobile: {
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: 10,
+    marginTop: 22,
+  },
+  heroHighlight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+  heroHighlightText: {
+    color: "#C2CBD5",
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  heroHighlightDivider: {
+    width: 1,
+    height: 15,
+    backgroundColor: "rgba(255,255,255,0.2)",
+  },
+  heroVisualMobile: {
+    width: "100%",
+    paddingTop: 46,
+    paddingBottom: 8,
+  },
+  heroVisualRing: {
+    position: "absolute",
+    width: 360,
+    height: 360,
+    borderRadius: 180,
+    right: -38,
+    top: -16,
+    borderWidth: 1,
+    borderColor: "rgba(216,185,120,0.16)",
+    backgroundColor: "rgba(216,185,120,0.025)",
+  },
+  previewFloat: {
+    position: "absolute",
+    zIndex: 2,
+    top: 0,
+    left: -28,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 13,
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#000000",
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 5,
+  },
+  previewFloatIcon: {
+    width: 30,
+    height: 30,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 10,
+    backgroundColor: "#F4EBD5",
+  },
+  previewFloatTitle: {
+    color: "#1D2E43",
+    fontSize: 10,
+    fontWeight: "800",
+  },
+  previewFloatCaption: {
+    color: "#7A8796",
+    fontSize: 9,
+    marginTop: 3,
+  },
+  previewFoot: {
+    alignSelf: "flex-end",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 11,
+    marginRight: 4,
+  },
+  previewFootText: {
+    color: "#C2CBD5",
+    fontSize: 10,
   },
   heroVisualTablet: {
     width: "100%",
     minWidth: 0,
     maxWidth: 520,
     alignSelf: "center",
+    paddingTop: 46,
   },
   dashboard: {
     width: "100%",
-    padding: 24,
-    borderRadius: 18,
+    padding: 25,
+    borderRadius: 22,
     backgroundColor: "#FFFFFF",
     borderWidth: 1,
-    borderColor: "#E4E8ED",
-    shadowColor: "#000000",
-    shadowOpacity: 0.2,
-    shadowRadius: 30,
-    shadowOffset: { width: 0, height: 18 },
+    borderColor: "rgba(255,255,255,0.72)",
+    shadowColor: "#020A13",
+    shadowOpacity: 0.3,
+    shadowRadius: 36,
+    shadowOffset: { width: 0, height: 22 },
     elevation: 8,
   },
   dashboardTop: {
@@ -952,7 +1187,7 @@ const styles = StyleSheet.create({
   },
   balanceAmount: {
     color: "#17283D",
-    fontSize: 29,
+    fontSize: 30,
     fontWeight: "700",
     marginTop: 8,
   },
@@ -960,6 +1195,50 @@ const styles = StyleSheet.create({
     color: "#738093",
     fontSize: 10,
     marginTop: 6,
+  },
+  accountStatusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#EFF6F2",
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  accountStatusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#378B67",
+  },
+  accountStatusText: {
+    color: "#3D7159",
+    fontSize: 8,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+  },
+  graphicChart: {
+    position: "relative",
+    height: 68,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    gap: 7,
+    marginTop: 19,
+  },
+  graphicChartBar: {
+    flex: 1,
+    borderRadius: 4,
+    backgroundColor: "#D8B978",
+    opacity: 0.84,
+  },
+  chartShine: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.7)",
   },
   accountRow: {
     flexDirection: "row",
@@ -1261,6 +1540,15 @@ const styles = StyleSheet.create({
     lineHeight: 34,
     fontWeight: "700",
     marginBottom: 8,
+  },
+  policyLink: {
+    alignSelf: "flex-start",
+    paddingTop: 12,
+  },
+  policyLinkText: {
+    color: "#705B32",
+    fontSize: 12,
+    fontWeight: "700",
   },
   downloadMetaRow: {
     flexDirection: "row",

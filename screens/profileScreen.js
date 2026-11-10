@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { AuthService } from '../services/authService';
 import ScreenWrapper from '../components/ScreenWrapper';
 import { useAppTheme } from '../hooks/useAppTheme';
+import BrandLockup from '../components/BrandLockup';
 
 const ProfileScreen = ({ navigation }) => {
   const user = useSelector((state) => state.userReducer?.user);
@@ -126,7 +127,7 @@ const ProfileScreen = ({ navigation }) => {
           <View style={styles.tierBottomRow}>
             <View>
               <Text style={[styles.tierText, { color: theme.textSecondary }]}>
-                You are currently on Tier 2
+                You are currently on Tier 1
               </Text>
               <TouchableOpacity onPress={() => navigation.navigate('accountLimits')}>
                 <Text style={styles.upgradeLink}>Upgrade your limit</Text>
@@ -168,10 +169,7 @@ const ProfileScreen = ({ navigation }) => {
 
         {/* Footer Brand Logo */}
         <View style={styles.footerBrand}>
-          <View style={[styles.brandIconCircle, { backgroundColor: theme.accentSoft }]}>
-            <Ionicons name="sparkles" size={20} color={theme.accent} />
-          </View>
-          <Text style={[styles.brandTitle, { color: theme.textPrimary }]}>Westcott Reserve</Text>
+          <BrandLockup subtitle="DIGITAL FINANCE" />
           <Text style={[styles.versionText, { color: theme.textMuted }]}>v1.0.00</Text>
         </View>
 

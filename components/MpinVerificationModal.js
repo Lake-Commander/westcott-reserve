@@ -16,6 +16,7 @@ export default function MpinVerificationModal({
   theme,
   recipient,
   amount,
+  currency = 'USD',
   onCancel,
   onVerified,
 }) {
@@ -90,7 +91,11 @@ export default function MpinVerificationModal({
               )}
               {!!amount && (
                 <Text style={[styles.amount, { color: theme.textPrimary }]}>
-                  Amount: ${amount}
+                  Amount: {new Intl.NumberFormat('en-US', {
+                    style: 'currency',
+                    currency,
+                    minimumFractionDigits: 2,
+                  }).format(Number(amount))}
                 </Text>
               )}
             </View>

@@ -1,5 +1,5 @@
 // screens/contactUsScreen.js
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import { supabase } from '../services/supabaseClient';
 
 const ContactUsScreen = ({ navigation }) => {
   const { theme } = useAppTheme();
+  const scrollViewRef = useRef(null);
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -77,7 +78,11 @@ const ContactUsScreen = ({ navigation }) => {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        ref={scrollViewRef}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={[styles.title, { color: theme.textPrimary }]}>Contact Us</Text>
 
         <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
@@ -129,17 +134,17 @@ const ContactUsScreen = ({ navigation }) => {
             <View style={styles.textCol}>
               <Text style={[styles.cardLabel, { color: theme.textSecondary }]}>Address</Text>
               <Text style={[styles.cardVal, { color: theme.textPrimary }]}>
-                Plot 20, Layi Yusuf Crescent Lekki, Phase 1
+                Plot 20, Rave Crescent, Colorado, Phase 1
               </Text>
             </View>
           </View>
         </View>
 
-        {/* Phone, Email, Live Chat Group */}
+        {/* Phone, Email, and Customer Care */}
         <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
           <TouchableOpacity
             style={styles.rowItem}
-            onPress={() => handleOpenLink('tel:07007007765')}
+            onPress={() => handleOpenLink('tel:+17007007765')}
             activeOpacity={0.7}
           >
             <View style={[styles.iconCircle, { backgroundColor: theme.surfaceLight }]}>
@@ -154,14 +159,14 @@ const ContactUsScreen = ({ navigation }) => {
 
           <TouchableOpacity
             style={styles.rowItem}
-            onPress={() => handleOpenLink('mailto:support@westcott.africa')}
+            onPress={() => handleOpenLink('mailto:support@westcottreserve.com')}
             activeOpacity={0.7}
           >
             <View style={[styles.iconCircle, { backgroundColor: theme.surfaceLight }]}>
               <Ionicons name="mail-outline" size={18} color="#7052FF" />
             </View>
             <View style={styles.textCol}>
-              <Text style={[styles.cardVal, { color: theme.textPrimary }]}>support@westcott.africa</Text>
+              <Text style={[styles.cardVal, { color: theme.textPrimary }]}>support@westcottreserve.com</Text>
             </View>
           </TouchableOpacity>
 
@@ -169,15 +174,15 @@ const ContactUsScreen = ({ navigation }) => {
 
           <TouchableOpacity
             style={styles.rowItem}
-            onPress={() => Alert.alert('Live Chat', 'Connecting to support team...')}
+            onPress={() => scrollViewRef.current?.scrollTo({ y: 0, animated: true })}
             activeOpacity={0.7}
           >
             <View style={[styles.iconCircle, { backgroundColor: theme.surfaceLight }]}>
               <Ionicons name="chatbubble-ellipses-outline" size={18} color="#7052FF" />
             </View>
             <View style={styles.textCol}>
-              <Text style={[styles.cardValBold, { color: theme.textPrimary }]}>Live chat</Text>
-              <Text style={[styles.cardSubText, { color: theme.textMuted }]}>Start a conversation</Text>
+              <Text style={[styles.cardValBold, { color: theme.textPrimary }]}>Message customer care</Text>
+              <Text style={[styles.cardSubText, { color: theme.textMuted }]}>Send a message in the app</Text>
             </View>
           </TouchableOpacity>
         </View>

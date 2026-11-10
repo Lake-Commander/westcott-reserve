@@ -87,13 +87,14 @@ module.exports = async function handler(req, res) {
     }
 
     const payload = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-    if (!payload || !['support_reply', 'notification'].includes(payload.type)) {
+    if (!payload || !['support_reply', 'notification', 'transfer_restriction'].includes(payload.type)) {
       return jsonResponse(res, 400, { error: 'Unsupported email request.' });
     }
 
     let subject;
     let textContent;
     let recipients;
+    let replyToEmail = process.env.BREVO_REPLY_TO_EMAIL || 'support@westcottreserve.com';
     if (payload.type === 'support_reply') {
       if (!validUuid(payload.messageId)) {
         return jsonResponse(res, 400, { error: 'A valid support message is required.' });
@@ -120,6 +121,37 @@ module.exports = async function handler(req, res) {
       recipients = [{ email: customer.email }];
       subject = `Re: ${message.subject}`;
       textContent = `Hello,\n\n${message.admin_reply}\n\nWestcott Reserve Support`;
+    } else if (payload.type === 'transfer_restriction') {
+      if (!validUuid(payload.audienceUserId)) {
+        return jsonResponse(res, 400, { error: 'A valid account is required.' });
+      }
+      const restrictionResponse = await fetch(
+        `${supabaseUrl}/rest/v1/account_transfer_restrictions?select=user_id&user_id=eq.${payload.audienceUserId}`,
+        { headers: supabaseHeaders(serviceKey) }
+      );
+      if (!restrictionResponse.ok) throw new Error('Unable to verify the transfer restriction.');
+      const restrictions = await restrictionResponse.json();
+      if (restrictions.length === 0) {
+        return jsonResponse(res, 409, { error: 'This account does not currently have a transfer restriction.' });
+      }
+      const profileResponse = await fetch(
+        `${supabaseUrl}/rest/v1/profiles?select=email,name&id=eq.${payload.audienceUserId}`,
+        { headers: supabaseHeaders(serviceKey) }
+      );
+      if (!profileResponse.ok) throw new Error('Unable to load the account email address.');
+      const profiles = await profileResponse.json();
+      const customer = profiles[0];
+      if (!customer?.email) {
+        return jsonResponse(res, 409, { error: 'This account has no email address on file.' });
+      }
+      recipients = [{ email: customer.email }];
+      subject = 'Outgoing transfers temporarily unavailable';
+      textContent =
+        `Hello${customer.name ? ` ${customer.name}` : ''},\n\n` +
+        'Outgoing transfers on your account are currently unavailable. Transfers submitted while this restriction is active will not be processed.\n\n' +
+        'Please contact support@westcott.com for assistance. Do not retry the transfer until you have spoken with customer support.\n\n' +
+        'Westcott Reserve';
+      replyToEmail = 'support@westcott.com';
     } else {
       const title = typeof payload.title === 'string' ? payload.title.trim() : '';
       const message = typeof payload.message === 'string' ? payload.message.trim() : '';
@@ -162,6 +194,10 @@ module.exports = async function handler(req, res) {
         headers: { 'api-key': brevoKey, 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({
           sender: { email: senderEmail, name: senderName },
+          replyTo: {
+            email: replyToEmail,
+            name: 'Westcott Reserve Support',
+          },
           to: batch,
           subject,
           textContent,

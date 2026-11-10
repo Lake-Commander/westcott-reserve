@@ -1,11 +1,11 @@
-name: Build Android Release APK
+name: Build Westcott Reserve APK
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    name: Build Release APK
+    name: Build Westcott Reserve APK
     runs-on: ubuntu-latest
 
     steps:
@@ -31,6 +31,16 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
+      - name: Prepare optional Firebase Android configuration
+        env:
+          FIREBASE_ANDROID_CONFIG_BASE64: ${{ secrets.FIREBASE_ANDROID_CONFIG_BASE64 }}
+        run: |
+          if [ -n "$FIREBASE_ANDROID_CONFIG_BASE64" ]; then
+            printf '%s' "$FIREBASE_ANDROID_CONFIG_BASE64" | base64 --decode > android/app/google-services.json
+          else
+            echo "Firebase Android configuration is not set; push token registration will require it."
+          fi
+
       - name: Verify Production Signing Secrets
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -51,11 +61,12 @@ jobs:
           chmod 600 "$RUNNER_TEMP/westcott-release.p12"
           echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/westcott-release.p12" >> "$GITHUB_ENV"
 
-      - name: Build Release APK
+      - name: Build Westcott Reserve APK
         env:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_KEY }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          EXPO_PUBLIC_EAS_PROJECT_ID: ${{ secrets.EXPO_PUBLIC_EAS_PROJECT_ID }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
@@ -74,6 +85,7 @@ jobs:
           apksigner_path=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner -print -quit)
           test -n "$apksigner_path" || { echo "Android apksigner tool was not found"; exit 1; }
           "$apksigner_path" verify "$apk_path"
+          cp "$apk_path" "android/app/build/outputs/apk/release/Westcott Reserve.apk"
 
       - name: Install Vercel CLI
         run: npm install --global vercel
@@ -81,7 +93,7 @@ jobs:
       - name: Stage APK for Website
         run: |
           mkdir -p public/downloads
-          cp android/app/build/outputs/apk/release/app-release.apk public/downloads/westcott-reserve.apk
+          cp "android/app/build/outputs/apk/release/Westcott Reserve.apk" public/downloads/westcott-reserve.apk
 
       - name: Configure Vercel Project
         env:
@@ -96,12 +108,49 @@ jobs:
           printf '{"projectId":"%s","orgId":"%s"}\n' "$VERCEL_PROJECT_ID" "$VERCEL_ORG_ID" > .vercel/project.json
           vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
 
+      - name: Sync production server secrets to Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_KEY }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
+          BREVO_SENDER_EMAIL: ${{ secrets.BREVO_SENDER_EMAIL }}
+          BREVO_SENDER_NAME: ${{ secrets.BREVO_SENDER_NAME }}
+          BREVO_REPLY_TO_EMAIL: ${{ secrets.BREVO_REPLY_TO_EMAIL }}
+        run: |
+          public_key="${EXPO_PUBLIC_SUPABASE_KEY:-$EXPO_PUBLIC_SUPABASE_ANON_KEY}"
+          test -n "$EXPO_PUBLIC_SUPABASE_URL" || { echo "Missing EXPO_PUBLIC_SUPABASE_URL repository secret"; exit 1; }
+          test -n "$public_key" || { echo "Missing EXPO_PUBLIC_SUPABASE_KEY (or legacy EXPO_PUBLIC_SUPABASE_ANON_KEY) repository secret"; exit 1; }
+          test -n "$SUPABASE_SERVICE_ROLE_KEY" || { echo "Missing SUPABASE_SERVICE_ROLE_KEY repository secret"; exit 1; }
+          test -n "$BREVO_API_KEY" || { echo "Missing BREVO_API_KEY repository secret"; exit 1; }
+          test -n "$BREVO_SENDER_EMAIL" || { echo "Missing BREVO_SENDER_EMAIL repository secret"; exit 1; }
+          test -n "$BREVO_SENDER_NAME" || { echo "Missing BREVO_SENDER_NAME repository secret"; exit 1; }
+
+          add_production_secret() {
+            printf '%s' "$2" | vercel env add "$1" --environment=production --sensitive --force --yes --token="$VERCEL_TOKEN"
+          }
+
+          add_production_secret EXPO_PUBLIC_SUPABASE_URL "$EXPO_PUBLIC_SUPABASE_URL"
+          add_production_secret EXPO_PUBLIC_SUPABASE_KEY "$public_key"
+          add_production_secret SUPABASE_SERVICE_ROLE_KEY "$SUPABASE_SERVICE_ROLE_KEY"
+          add_production_secret BREVO_API_KEY "$BREVO_API_KEY"
+          add_production_secret BREVO_SENDER_EMAIL "$BREVO_SENDER_EMAIL"
+          add_production_secret BREVO_SENDER_NAME "$BREVO_SENDER_NAME"
+          if [ -n "$BREVO_REPLY_TO_EMAIL" ]; then
+            add_production_secret BREVO_REPLY_TO_EMAIL "$BREVO_REPLY_TO_EMAIL"
+          fi
+
+          vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+
       - name: Build and Deploy Website with APK
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_KEY }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          EXPO_PUBLIC_EAS_PROJECT_ID: ${{ secrets.EXPO_PUBLIC_EAS_PROJECT_ID }}
         run: |
           vercel build --prod --token="$VERCEL_TOKEN"
           test -s .vercel/output/static/downloads/westcott-reserve.apk
@@ -110,5 +159,5 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: WestcottReserve-Release-APK
-          path: android/app/build/outputs/apk/release/app-release.apk
+          name: Westcott Reserve APK
+          path: android/app/build/outputs/apk/release/Westcott Reserve.apk

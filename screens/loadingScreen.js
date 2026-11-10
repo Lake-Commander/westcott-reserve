@@ -2,10 +2,10 @@ import React, { useCallback } from 'react';
 import { useAppTheme } from '../hooks/useAppTheme';
 import { StyleSheet, Text, View, StatusBar, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
 import { useDispatch } from 'react-redux';
 import { AuthService } from '../services/authService';
 import { supabase } from '../services/supabaseClient';
+import BrandLockup from '../components/BrandLockup';
 
 const LoadingScreen = ({ navigation }) => {
   const { theme, isDark } = useAppTheme();
@@ -69,11 +69,7 @@ const LoadingScreen = ({ navigation }) => {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0A0A0C" />
       <View style={styles.mainContent}>
-        <View style={styles.logoBadge}>
-          <Ionicons name="sparkles" size={40} color="#7052FF" />
-        </View>
-        <Text style={styles.brandTitle}>Westcott Reserve</Text>
-        <Text style={styles.brandSubtitle}>DIGITAL PRIVATE BANKING</Text>
+        <BrandLockup dark iconSize={72} subtitle="PRIVATE CLIENT SERVICES" />
         <ActivityIndicator size="small" color="#7052FF" style={{ marginTop: 24 }} />
       </View>
       <View style={styles.footer}>
@@ -95,30 +91,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  logoBadge: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(112, 82, 255, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(112, 82, 255, 0.35)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  brandTitle: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: '#F8FAFC',
-    letterSpacing: 0.5,
-  },
-  brandSubtitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#7052FF',
-    letterSpacing: 2.5,
-    marginTop: 6,
   },
   footer: {
     paddingBottom: 32,

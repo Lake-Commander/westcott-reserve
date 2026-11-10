@@ -21,6 +21,7 @@
       "expo-sharing",
       "expo-font",
       "expo-status-bar",
+      "expo-notifications",
       [
         "expo-splash-screen",
         {
@@ -29,6 +30,12 @@
           "backgroundColor": "#0F172A"
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "4c45c99a-eb22-453a-91a0-d96838e1c490"
+      }
+    },
+    "owner": "lake-commanders-team"
   }
 }

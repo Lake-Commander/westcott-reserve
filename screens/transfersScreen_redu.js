@@ -177,6 +177,7 @@ const TransfersScreen = ({ navigation }) => {
         theme={theme}
         recipient={resolvedName || `Account ending ${accountNumber.trim().slice(-4)}`}
         amount={Number.isFinite(parseFloat(amount)) ? parseFloat(amount).toFixed(2) : ""}
+        currency={user?.currency || "USD"}
         onCancel={() => setMpinPromptVisible(false)}
         onVerified={() => {
           setMpinPromptVisible(false);

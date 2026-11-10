@@ -32,31 +32,29 @@ CREATE TABLE IF NOT EXISTS public.transactions (
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 
--- Profiles Policies
-CREATE POLICY "Users can view own profile" 
-  ON public.profiles FOR SELECT 
-  USING (auth.uid() = id);
-
-CREATE POLICY "Users can update own profile" 
-  ON public.profiles FOR UPDATE 
-  USING (auth.uid() = id);
-
-CREATE POLICY "Users can insert own profile" 
-  ON public.profiles FOR INSERT 
-  WITH CHECK (auth.uid() = id);
-
--- Transactions Policies
-CREATE POLICY "Users can view own transactions" 
-  ON public.transactions FOR SELECT 
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert own transactions" 
-  ON public.transactions FOR INSERT 
-  WITH CHECK (auth.uid() = user_id);
-
 -- Realtime publication for balance & transaction updates
-ALTER PUBLICATION supabase_realtime ADD TABLE public.profiles;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.transactions;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime')
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_publication_tables
+       WHERE pubname = 'supabase_realtime'
+         AND schemaname = 'public'
+         AND tablename = 'profiles'
+     ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.profiles;
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime')
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_publication_tables
+       WHERE pubname = 'supabase_realtime'
+         AND schemaname = 'public'
+         AND tablename = 'transactions'
+     ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.transactions;
+  END IF;
+END;
+$$;
 
 -- Admin access is granted manually to existing auth users by a database
 -- administrator. Never add a public sign-up path for admin_users.
@@ -70,6 +68,56 @@ REVOKE ALL ON public.admin_users FROM anon, authenticated;
 GRANT SELECT ON public.admin_users TO service_role;
 GRANT SELECT ON public.profiles TO service_role;
 
+CREATE TABLE IF NOT EXISTS public.user_mfa_requirements (
+  user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  enabled_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE public.user_mfa_requirements ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.user_mfa_requirements FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.is_mfa_access_allowed()
+RETURNS BOOLEAN
+LANGUAGE SQL
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT auth.uid() IS NOT NULL AND (
+    NOT EXISTS (
+      SELECT 1 FROM public.user_mfa_requirements WHERE user_id = auth.uid()
+    )
+    OR COALESCE(auth.jwt() ->> 'aal' = 'aal2', FALSE)
+  );
+$$;
+REVOKE ALL ON FUNCTION public.is_mfa_access_allowed() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.is_mfa_access_allowed() TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.set_user_mfa_requirement(p_enabled BOOLEAN)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF auth.uid() IS NULL OR auth.jwt() ->> 'aal' IS DISTINCT FROM 'aal2' THEN
+    RAISE EXCEPTION 'Complete authenticator verification before changing MFA settings';
+  END IF;
+  IF p_enabled IS NULL THEN
+    RAISE EXCEPTION 'MFA setting is required';
+  END IF;
+
+  IF p_enabled THEN
+    INSERT INTO public.user_mfa_requirements (user_id)
+    VALUES (auth.uid())
+    ON CONFLICT (user_id) DO NOTHING;
+  ELSE
+    DELETE FROM public.user_mfa_requirements WHERE user_id = auth.uid();
+  END IF;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.set_user_mfa_requirement(BOOLEAN) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.set_user_mfa_requirement(BOOLEAN) TO authenticated;
+
 CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS BOOLEAN
 LANGUAGE SQL
@@ -77,7 +125,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
-  SELECT EXISTS (
+  SELECT public.is_mfa_access_allowed() AND EXISTS (
     SELECT 1 FROM public.admin_users WHERE user_id = auth.uid()
   );
 $$;
@@ -92,6 +140,104 @@ CREATE TABLE IF NOT EXISTS public.account_suspensions (
 ALTER TABLE public.account_suspensions ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.account_suspensions FROM anon, authenticated;
 
+CREATE TABLE IF NOT EXISTS public.account_transfer_restrictions (
+  user_id UUID PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
+  restricted_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE public.account_transfer_restrictions ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.account_transfer_restrictions FROM anon, authenticated;
+GRANT SELECT ON public.account_transfer_restrictions TO authenticated;
+DROP POLICY IF EXISTS "Admins can view account transfer restrictions" ON public.account_transfer_restrictions;
+CREATE POLICY "Admins can view account transfer restrictions"
+  ON public.account_transfer_restrictions FOR SELECT TO authenticated
+  USING (public.is_admin());
+
+CREATE OR REPLACE FUNCTION public.is_account_transfer_blocked()
+RETURNS BOOLEAN
+LANGUAGE SQL
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT auth.uid() IS NOT NULL AND EXISTS (
+    SELECT 1
+    FROM public.account_transfer_restrictions
+    WHERE user_id = auth.uid()
+  );
+$$;
+REVOKE ALL ON FUNCTION public.is_account_transfer_blocked() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.is_account_transfer_blocked() TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.reject_restricted_account_debits()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF NEW.type = 'DEBIT' AND EXISTS (
+    SELECT 1
+    FROM public.account_transfer_restrictions
+    WHERE user_id = NEW.user_id
+  ) THEN
+    RAISE EXCEPTION
+      'We could not process this transfer. Please contact support@westcott.com for assistance.';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.reject_restricted_account_debits() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS reject_restricted_account_debits ON public.transactions;
+CREATE TRIGGER reject_restricted_account_debits
+  BEFORE INSERT ON public.transactions
+  FOR EACH ROW
+  EXECUTE FUNCTION public.reject_restricted_account_debits();
+
+CREATE OR REPLACE FUNCTION public.admin_set_account_transfer_restriction(
+  p_user_id UUID,
+  p_restricted BOOLEAN
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Admin access required';
+  END IF;
+  IF p_user_id IS NULL OR p_restricted IS NULL THEN
+    RAISE EXCEPTION 'Account and transfer restriction status are required';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = p_user_id) THEN
+    RAISE EXCEPTION 'Account not found';
+  END IF;
+
+  IF p_restricted THEN
+    INSERT INTO public.account_transfer_restrictions (user_id, restricted_by)
+    VALUES (p_user_id, auth.uid())
+    ON CONFLICT (user_id) DO UPDATE
+      SET restricted_by = EXCLUDED.restricted_by, created_at = now();
+  ELSE
+    DELETE FROM public.account_transfer_restrictions
+    WHERE user_id = p_user_id;
+  END IF;
+
+  INSERT INTO public.admin_audit_log (actor_id, action, entity_type, entity_id, details)
+  VALUES (
+    auth.uid(),
+    'account_transfer_restriction_updated',
+    'account',
+    p_user_id::TEXT,
+    jsonb_build_object('restricted', p_restricted)
+  );
+END;
+$$;
+REVOKE ALL ON FUNCTION public.admin_set_account_transfer_restriction(UUID, BOOLEAN) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.admin_set_account_transfer_restriction(UUID, BOOLEAN) TO authenticated;
+
 CREATE OR REPLACE FUNCTION public.is_account_active()
 RETURNS BOOLEAN
 LANGUAGE SQL
@@ -99,7 +245,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
-  SELECT auth.uid() IS NOT NULL AND NOT EXISTS (
+  SELECT public.is_mfa_access_allowed() AND auth.uid() IS NOT NULL AND NOT EXISTS (
     SELECT 1 FROM public.account_suspensions WHERE user_id = auth.uid()
   );
 $$;
@@ -128,6 +274,14 @@ CREATE POLICY "Users can insert own transactions"
   ON public.transactions FOR INSERT TO authenticated
   WITH CHECK (auth.uid() = user_id AND public.is_account_active());
 
+-- Remove permissive policies created by the original prototype schema. They
+-- override the account-scoped policies above because PostgreSQL ORs policies.
+DROP POLICY IF EXISTS "Allow public read/write profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Enable all for authenticated users on profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Users can view and update their own profile" ON public.profiles;
+DROP POLICY IF EXISTS "Allow public read/write transactions" ON public.transactions;
+DROP POLICY IF EXISTS "Enable all for authenticated users on transactions" ON public.transactions;
+
 DROP POLICY IF EXISTS "Admins can view all profiles" ON public.profiles;
 
 DROP FUNCTION IF EXISTS public.admin_list_profiles();
@@ -138,6 +292,7 @@ RETURNS TABLE (
   name TEXT,
   username TEXT,
   balance NUMERIC,
+  currency TEXT,
   created_at TIMESTAMPTZ,
   is_active BOOLEAN
 )
@@ -150,7 +305,7 @@ BEGIN
     RAISE EXCEPTION 'Admin access required';
   END IF;
   RETURN QUERY
-    SELECT p.id, p.email, p.name, p.username, p.balance, p.created_at,
+    SELECT p.id, p.email, p.name, p.username, p.balance, p.currency, p.created_at,
       NOT EXISTS (
         SELECT 1 FROM public.account_suspensions AS s WHERE s.user_id = p.id
       ) AS is_active
@@ -255,7 +410,7 @@ ON CONFLICT (feature_key) DO NOTHING;
 DROP POLICY IF EXISTS "Authenticated users can read feature flags" ON public.app_feature_flags;
 CREATE POLICY "Authenticated users can read feature flags"
   ON public.app_feature_flags FOR SELECT TO authenticated
-  USING (true);
+  USING (public.is_account_active());
 REVOKE INSERT, UPDATE, DELETE ON public.app_feature_flags FROM anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.admin_notifications (
@@ -277,6 +432,52 @@ CREATE POLICY "Users can read notifications for their account"
   );
 REVOKE INSERT, UPDATE, DELETE ON public.admin_notifications FROM anon, authenticated;
 
+CREATE OR REPLACE FUNCTION public.notify_user_of_transaction()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  transaction_currency TEXT;
+  notification_title TEXT;
+BEGIN
+  IF NEW.amount <= 0 THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT currency INTO transaction_currency
+  FROM public.profiles
+  WHERE id = NEW.user_id;
+
+  IF NEW.type = 'CREDIT' THEN
+    notification_title := 'Money received';
+  ELSE
+    notification_title := 'Transfer recorded';
+  END IF;
+
+  INSERT INTO public.admin_notifications (audience_user_id, title, message)
+  VALUES (
+    NEW.user_id,
+    notification_title,
+    format(
+      'A transaction of %s %s was recorded. Open History to review the details.',
+      COALESCE(transaction_currency, 'USD'),
+      to_char(NEW.amount, 'FM999,999,999,990.00')
+    )
+  );
+
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.notify_user_of_transaction() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS notify_user_of_transaction ON public.transactions;
+CREATE TRIGGER notify_user_of_transaction
+  AFTER INSERT ON public.transactions
+  FOR EACH ROW
+  EXECUTE FUNCTION public.notify_user_of_transaction();
+
 CREATE OR REPLACE FUNCTION public.is_feature_enabled(p_feature_key TEXT)
 RETURNS BOOLEAN
 LANGUAGE SQL
@@ -284,7 +485,12 @@ STABLE
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
-  SELECT public.is_account_active() AND COALESCE(
+  SELECT public.is_account_active()
+    AND (
+      p_feature_key <> 'transfers'
+      OR NOT public.is_account_transfer_blocked()
+    )
+    AND COALESCE(
     (SELECT enabled FROM public.app_feature_flags WHERE feature_key = p_feature_key),
     TRUE
   );
@@ -667,6 +873,336 @@ BEGIN
          AND tablename = 'app_ui_config'
      ) THEN
     ALTER PUBLICATION supabase_realtime ADD TABLE public.app_ui_config;
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime')
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_publication_tables
+       WHERE pubname = 'supabase_realtime'
+         AND schemaname = 'public'
+         AND tablename = 'admin_notifications'
+     ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.admin_notifications;
+  END IF;
+END;
+$$;
+
+-- Per-account app preferences. Email and SMS preferences are intentionally
+-- omitted until those delivery channels are configured.
+CREATE TABLE IF NOT EXISTS public.app_user_settings (
+  user_id UUID PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
+  show_balance_on_launch BOOLEAN NOT NULL DEFAULT TRUE,
+  push_notifications_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  in_app_notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE public.app_user_settings ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE ON public.app_user_settings TO authenticated;
+REVOKE ALL ON public.app_user_settings FROM anon;
+DROP POLICY IF EXISTS "Users can read own app settings" ON public.app_user_settings;
+CREATE POLICY "Users can read own app settings"
+  ON public.app_user_settings FOR SELECT TO authenticated
+  USING (auth.uid() = user_id AND public.is_account_active());
+DROP POLICY IF EXISTS "Users can create own app settings" ON public.app_user_settings;
+CREATE POLICY "Users can create own app settings"
+  ON public.app_user_settings FOR INSERT TO authenticated
+  WITH CHECK (auth.uid() = user_id AND public.is_account_active());
+DROP POLICY IF EXISTS "Users can update own app settings" ON public.app_user_settings;
+CREATE POLICY "Users can update own app settings"
+  ON public.app_user_settings FOR UPDATE TO authenticated
+  USING (auth.uid() = user_id AND public.is_account_active())
+  WITH CHECK (auth.uid() = user_id AND public.is_account_active());
+
+-- Records the app/device and timestamps for account sign-ins. No location or
+-- hardware identifier is collected.
+CREATE TABLE IF NOT EXISTS public.device_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  platform TEXT NOT NULL CHECK (char_length(platform) BETWEEN 1 AND 32),
+  model_name TEXT NOT NULL CHECK (char_length(model_name) BETWEEN 1 AND 120),
+  os_version TEXT NOT NULL CHECK (char_length(os_version) BETWEEN 1 AND 60),
+  app_version TEXT NOT NULL CHECK (char_length(app_version) BETWEEN 1 AND 40),
+  first_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  signed_out_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS device_sessions_user_last_seen_idx
+  ON public.device_sessions (user_id, last_seen_at DESC);
+ALTER TABLE public.device_sessions ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE ON public.device_sessions TO authenticated;
+REVOKE ALL ON public.device_sessions FROM anon;
+DROP POLICY IF EXISTS "Users can read own device sessions" ON public.device_sessions;
+CREATE POLICY "Users can read own device sessions"
+  ON public.device_sessions FOR SELECT TO authenticated
+  USING (auth.uid() = user_id AND public.is_account_active());
+DROP POLICY IF EXISTS "Users can record own device sessions" ON public.device_sessions;
+CREATE POLICY "Users can record own device sessions"
+  ON public.device_sessions FOR INSERT TO authenticated
+  WITH CHECK (auth.uid() = user_id AND public.is_account_active());
+DO $$
+BEGIN
+  IF to_regclass('public.device_sessions') IS NOT NULL THEN
+    EXECUTE 'DROP POLICY IF EXISTS "Users can update own device sessions" ON public.device_sessions';
+    EXECUTE 'CREATE POLICY "Users can update own device sessions"
+      ON public.device_sessions FOR UPDATE TO authenticated
+      USING (auth.uid() = user_id AND public.is_account_active())
+      WITH CHECK (auth.uid() = user_id AND public.is_account_active())';
+  END IF;
+END;
+$$;
+
+CREATE TABLE IF NOT EXISTS public.push_tokens (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  expo_push_token TEXT NOT NULL UNIQUE,
+  platform TEXT NOT NULL CHECK (platform IN ('android', 'ios')),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS push_tokens_user_id_idx ON public.push_tokens (user_id);
+ALTER TABLE public.push_tokens ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.push_tokens TO authenticated;
+REVOKE ALL ON public.push_tokens FROM anon;
+DROP POLICY IF EXISTS "Users and admins can read push tokens" ON public.push_tokens;
+CREATE POLICY "Users and admins can read push tokens"
+  ON public.push_tokens FOR SELECT TO authenticated
+  USING ((auth.uid() = user_id AND public.is_account_active()) OR public.is_admin());
+DROP POLICY IF EXISTS "Users can register own push tokens" ON public.push_tokens;
+CREATE POLICY "Users can register own push tokens"
+  ON public.push_tokens FOR INSERT TO authenticated
+  WITH CHECK (auth.uid() = user_id AND public.is_account_active());
+DROP POLICY IF EXISTS "Users can update own push tokens" ON public.push_tokens;
+CREATE POLICY "Users can update own push tokens"
+  ON public.push_tokens FOR UPDATE TO authenticated
+  USING (auth.uid() = user_id AND public.is_account_active())
+  WITH CHECK (auth.uid() = user_id AND public.is_account_active());
+DROP POLICY IF EXISTS "Users can remove own push tokens" ON public.push_tokens;
+CREATE POLICY "Users can remove own push tokens"
+  ON public.push_tokens FOR DELETE TO authenticated
+  USING (auth.uid() = user_id);
+
+-- Do not allow a customer to change the account denomination without the
+-- administrator's audited conversion flow.
+CREATE OR REPLACE FUNCTION public.prevent_customer_currency_changes()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF auth.uid() = OLD.id AND NOT public.is_admin()
+     AND NEW.currency IS DISTINCT FROM OLD.currency THEN
+    RAISE EXCEPTION 'Only an administrator can change account currency';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS prevent_customer_currency_changes ON public.profiles;
+CREATE TRIGGER prevent_customer_currency_changes
+  BEFORE UPDATE ON public.profiles
+  FOR EACH ROW EXECUTE FUNCTION public.prevent_customer_currency_changes();
+REVOKE ALL ON FUNCTION public.prevent_customer_currency_changes() FROM PUBLIC, anon, authenticated;
+
+DROP FUNCTION IF EXISTS public.admin_convert_profile_currency(UUID, TEXT, NUMERIC, DATE);
+CREATE OR REPLACE FUNCTION public.admin_convert_profile_currency(
+  p_user_id UUID,
+  p_expected_currency TEXT,
+  p_target_currency TEXT,
+  p_conversion_rate NUMERIC,
+  p_rate_date DATE
+)
+RETURNS TABLE (balance NUMERIC, currency TEXT)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  old_balance NUMERIC;
+  old_currency TEXT;
+  new_balance NUMERIC;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Admin access required';
+  END IF;
+  IF p_user_id IS NULL THEN
+    RAISE EXCEPTION 'Customer account is required';
+  END IF;
+  IF p_expected_currency IS NULL OR p_expected_currency !~ '^[A-Z]{3}$' THEN
+    RAISE EXCEPTION 'Current account currency is invalid';
+  END IF;
+  IF p_target_currency IS NULL OR p_target_currency !~ '^[A-Z]{3}$' THEN
+    RAISE EXCEPTION 'Target currency must be a three-letter uppercase currency code';
+  END IF;
+  IF p_conversion_rate IS NULL OR p_conversion_rate <= 0 OR p_conversion_rate > 1000000 THEN
+    RAISE EXCEPTION 'A valid positive conversion rate is required';
+  END IF;
+  IF p_rate_date IS NULL OR p_rate_date > current_date OR p_rate_date < current_date - 14 THEN
+    RAISE EXCEPTION 'The reference rate must be dated within the last 14 days';
+  END IF;
+
+  SELECT p.balance, upper(coalesce(p.currency, 'USD'))
+  INTO old_balance, old_currency
+  FROM public.profiles AS p
+  WHERE p.id = p_user_id
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Customer account not found';
+  END IF;
+  IF old_currency <> p_expected_currency THEN
+    RAISE EXCEPTION 'Account currency changed. Refresh the estimate and try again.';
+  END IF;
+  IF old_currency = p_target_currency THEN
+    RAISE EXCEPTION 'The account is already denominated in %', p_target_currency;
+  END IF;
+
+  new_balance := round(old_balance * p_conversion_rate, 2);
+  UPDATE public.profiles
+  SET balance = new_balance, currency = p_target_currency, updated_at = now()
+  WHERE id = p_user_id;
+
+  INSERT INTO public.admin_audit_log (actor_id, action, entity_type, entity_id, details)
+  VALUES (
+    auth.uid(),
+    'account_balance_currency_converted',
+    'account',
+    p_user_id::TEXT,
+    jsonb_build_object(
+      'old_balance', old_balance,
+      'old_currency', old_currency,
+      'new_balance', new_balance,
+      'new_currency', p_target_currency,
+      'conversion_rate', p_conversion_rate,
+      'rate_date', p_rate_date,
+      'rate_source', 'Frankfurter API / European Central Bank reference rates'
+    )
+  );
+
+  RETURN QUERY SELECT new_balance, p_target_currency;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.admin_convert_profile_currency(UUID, TEXT, TEXT, NUMERIC, DATE)
+  FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.admin_convert_profile_currency(UUID, TEXT, TEXT, NUMERIC, DATE)
+  TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.admin_list_push_tokens(p_audience_user_id UUID DEFAULT NULL)
+RETURNS TABLE (expo_push_token TEXT)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Admin access required';
+  END IF;
+  RETURN QUERY
+    SELECT t.expo_push_token
+    FROM public.push_tokens AS t
+    JOIN public.app_user_settings AS s ON s.user_id = t.user_id
+    JOIN public.profiles AS p ON p.id = t.user_id
+    WHERE s.push_notifications_enabled = TRUE
+      AND (p_audience_user_id IS NULL OR t.user_id = p_audience_user_id)
+      AND NOT EXISTS (
+        SELECT 1
+        FROM public.account_suspensions AS suspended
+        WHERE suspended.user_id = t.user_id
+      )
+    ORDER BY t.expo_push_token;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.admin_list_push_tokens(UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.admin_list_push_tokens(UUID) TO authenticated;
+
+-- TOTP MFA migration for projects that have already applied the earlier schema.
+CREATE TABLE IF NOT EXISTS public.user_mfa_requirements (
+  user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  enabled_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE public.user_mfa_requirements ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.user_mfa_requirements FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.is_mfa_access_allowed()
+RETURNS BOOLEAN
+LANGUAGE SQL
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT auth.uid() IS NOT NULL AND (
+    NOT EXISTS (
+      SELECT 1 FROM public.user_mfa_requirements WHERE user_id = auth.uid()
+    )
+    OR COALESCE(auth.jwt() ->> 'aal' = 'aal2', FALSE)
+  );
+$$;
+REVOKE ALL ON FUNCTION public.is_mfa_access_allowed() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.is_mfa_access_allowed() TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.set_user_mfa_requirement(p_enabled BOOLEAN)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF auth.uid() IS NULL OR auth.jwt() ->> 'aal' IS DISTINCT FROM 'aal2' THEN
+    RAISE EXCEPTION 'Complete authenticator verification before changing MFA settings';
+  END IF;
+  IF p_enabled IS NULL THEN
+    RAISE EXCEPTION 'MFA setting is required';
+  END IF;
+
+  IF p_enabled THEN
+    INSERT INTO public.user_mfa_requirements (user_id)
+    VALUES (auth.uid())
+    ON CONFLICT (user_id) DO NOTHING;
+  ELSE
+    DELETE FROM public.user_mfa_requirements WHERE user_id = auth.uid();
+  END IF;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.set_user_mfa_requirement(BOOLEAN) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.set_user_mfa_requirement(BOOLEAN) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN
+LANGUAGE SQL
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT public.is_mfa_access_allowed() AND EXISTS (
+    SELECT 1 FROM public.admin_users WHERE user_id = auth.uid()
+  );
+$$;
+REVOKE ALL ON FUNCTION public.is_admin() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.is_admin() TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.is_account_active()
+RETURNS BOOLEAN
+LANGUAGE SQL
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT public.is_mfa_access_allowed() AND auth.uid() IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.account_suspensions WHERE user_id = auth.uid()
+  );
+$$;
+REVOKE ALL ON FUNCTION public.is_account_active() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.is_account_active() TO authenticated;
+
+DROP POLICY IF EXISTS "Authenticated users can read feature flags" ON public.app_feature_flags;
+CREATE POLICY "Authenticated users can read feature flags"
+  ON public.app_feature_flags FOR SELECT TO authenticated
+  USING (public.is_account_active());
+
+DO $$
+BEGIN
+  IF to_regclass('public.device_sessions') IS NOT NULL THEN
+    EXECUTE 'DROP POLICY IF EXISTS "Users can update own device sessions" ON public.device_sessions';
+    EXECUTE 'CREATE POLICY "Users can update own device sessions"
+      ON public.device_sessions FOR UPDATE TO authenticated
+      USING (auth.uid() = user_id AND public.is_account_active())
+      WITH CHECK (auth.uid() = user_id AND public.is_account_active())';
   END IF;
 END;
 $$;

@@ -124,7 +124,7 @@ const SelectBankScreen = ({ navigation, route }) => {
           <Ionicons name="open-outline" size={14} color={theme.accent} />
         </WebAnchor>
         <Text style={[styles.sourceNote, { color: theme.textMuted }]}>
-          The directory is organized as one JSON file per country. Bank options here are for demo selection only.
+          The directory is organized as one JSON file per country.
         </Text>
 
         <SectionList

@@ -258,6 +258,10 @@ const HistoryScreen = ({ navigation }) => {
                             styles.txRow,
                             idx < group.data.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.cardBorder },
                           ]}
+                          onPress={() => navigation.navigate('transactionDetails', {
+                            transaction: tx,
+                            currency: currentUser?.currency,
+                          })}
                           activeOpacity={0.7}
                         >
                           <View style={styles.txLeftCol}>
