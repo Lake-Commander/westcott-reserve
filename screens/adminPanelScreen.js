@@ -1647,6 +1647,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  mobileNavWrapper: { 
+    height: 52, 
+    backgroundColor: COLORS.card, 
+    borderBottomWidth: 1, 
+    borderBottomColor: COLORS.border 
+  },
+  mobileNavContent: { 
+    paddingHorizontal: 12, 
+    gap: 5 
+  },
   brandMarkText: { color: '#FFFFFF', fontSize: 20, fontWeight: '800' },
   brandName: { color: '#FFFFFF', fontSize: 12, fontWeight: '800', letterSpacing: 0.8 },
   brandCaption: { color: '#8995A8', fontSize: 9, fontWeight: '700', letterSpacing: 1, marginTop: 3 },
@@ -1715,9 +1725,9 @@ const styles = StyleSheet.create({
   authBrandLink: { flexDirection: 'row', alignItems: 'center', gap: 10, alignSelf: 'flex-start' },
   publicSiteLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 8, marginTop: 2 },
   publicSiteLinkText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
-  centered: { flex: 1, minHeight: '100vh', alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: COLORS.background },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: COLORS.background },
   topBar: {
-    minHeight: 80,
+    height: 80,
     paddingHorizontal: 20,
     paddingVertical: 14,
     flexDirection: 'row',
