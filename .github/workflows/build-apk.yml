@@ -136,14 +136,18 @@ jobs:
             printf '%s' "$2" | vercel env add "$1" --environment=production --scope="$VERCEL_ORG_ID" --project="$VERCEL_PROJECT_ID" --sensitive --force --yes --token="$VERCEL_TOKEN"
           }
 
-          add_production_secret EXPO_PUBLIC_SUPABASE_URL "$EXPO_PUBLIC_SUPABASE_URL"
-          add_production_secret EXPO_PUBLIC_SUPABASE_KEY "$public_key"
+          add_production_config() {
+            printf '%s' "$2" | vercel env add "$1" --environment=production --scope="$VERCEL_ORG_ID" --project="$VERCEL_PROJECT_ID" --no-sensitive --force --yes --token="$VERCEL_TOKEN"
+          }
+
+          add_production_config EXPO_PUBLIC_SUPABASE_URL "$EXPO_PUBLIC_SUPABASE_URL"
+          add_production_config EXPO_PUBLIC_SUPABASE_KEY "$public_key"
           add_production_secret SUPABASE_SERVICE_ROLE_KEY "$SUPABASE_SERVICE_ROLE_KEY"
           add_production_secret BREVO_API_KEY "$BREVO_API_KEY"
-          add_production_secret BREVO_SENDER_EMAIL "$BREVO_SENDER_EMAIL"
-          add_production_secret BREVO_SENDER_NAME "$BREVO_SENDER_NAME"
+          add_production_config BREVO_SENDER_EMAIL "$BREVO_SENDER_EMAIL"
+          add_production_config BREVO_SENDER_NAME "$BREVO_SENDER_NAME"
           if [ -n "$BREVO_REPLY_TO_EMAIL" ]; then
-            add_production_secret BREVO_REPLY_TO_EMAIL "$BREVO_REPLY_TO_EMAIL"
+            add_production_config BREVO_REPLY_TO_EMAIL "$BREVO_REPLY_TO_EMAIL"
           fi
 
           vercel pull --yes --environment=production --scope="$VERCEL_ORG_ID" --project="$VERCEL_PROJECT_ID" --token="$VERCEL_TOKEN"
