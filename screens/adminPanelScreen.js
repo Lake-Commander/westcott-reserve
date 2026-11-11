@@ -1648,7 +1648,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   mobileNavWrapper: { 
-    height: 52, 
+    height: 20, 
     backgroundColor: COLORS.card, 
     borderBottomWidth: 1, 
     borderBottomColor: COLORS.border 
