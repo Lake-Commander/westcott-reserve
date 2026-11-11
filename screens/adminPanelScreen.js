@@ -1727,7 +1727,7 @@ const styles = StyleSheet.create({
   publicSiteLinkText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: COLORS.background },
   topBar: {
-    height: 30,
+    height: 80,
     paddingHorizontal: 20,
     paddingVertical: 14,
     flexDirection: 'row',
@@ -1756,7 +1756,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
-  mobileBrand: { flexDirection: 'row', alignItems: 'center', flexShrink: 0, minWidth: 38 },
+  mobileBrand: { height: 40, flexDirection: 'row', alignItems: 'center', flexShrink: 0, minWidth: 38 },
   pageHeading: { flex: 1 },
   eyebrow: { color: COLORS.primary, fontSize: 10, fontWeight: '800', letterSpacing: 1.2, marginBottom: 5 },
   title: { color: COLORS.ink, fontSize: 23, fontWeight: '800' },
