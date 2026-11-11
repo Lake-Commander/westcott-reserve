@@ -1648,7 +1648,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   mobileNavWrapper: { 
-    height: 5, 
+    height: 52, 
+    flexGrow: 0,
+    flexShrink: 0,
     backgroundColor: COLORS.card, 
     borderBottomWidth: 1, 
     borderBottomColor: COLORS.border 
@@ -1727,9 +1729,11 @@ const styles = StyleSheet.create({
   publicSiteLinkText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: COLORS.background },
   topBar: {
-    height: 80,
+    height: 70,
+    flexGrow: 0,
+    flexShrink: 0,
     paddingHorizontal: 20,
-    paddingVertical: 14,
+   // paddingVertical: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
