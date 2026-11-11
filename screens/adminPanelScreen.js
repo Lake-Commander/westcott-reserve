@@ -1727,7 +1727,7 @@ const styles = StyleSheet.create({
   publicSiteLinkText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: COLORS.background },
   topBar: {
-    height: 80,
+    height: 30,
     paddingHorizontal: 20,
     paddingVertical: 14,
     flexDirection: 'row',
