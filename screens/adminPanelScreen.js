@@ -970,7 +970,8 @@ export default function AdminPanelScreen() {
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.mobileNav}
+              style={styles.mobileNavWrapper}
+              contentContainerStyle={styles.mobileNavContent}
             >
               {SECTIONS.map((item) => (
                 <Pressable
@@ -1626,8 +1627,8 @@ function formatDate(value) {
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, minHeight: '100vh', backgroundColor: COLORS.background },
-  appShell: { flex: 1, minHeight: '100vh', flexDirection: 'row' },
+  page: { flex: 1, backgroundColor: COLORS.background },
+  appShell: { flex: 1, flexDirection: 'row' },
   sidebar: {
     width: 252,
     flexShrink: 0,
@@ -1692,7 +1693,7 @@ const styles = StyleSheet.create({
   identityCopy: { flex: 1, minWidth: 0 },
   identityName: { color: '#F8FAFC', fontSize: 11, fontWeight: '700' },
   identityRole: { color: '#8995A8', fontSize: 11, marginTop: 3 },
-  workspace: { flex: 1, minWidth: 0, minHeight: '100vh' },
+  workspace: { flex: 1, minWidth: 0 },
   authPage: {
     flex: 1,
     minHeight: '100vh',
