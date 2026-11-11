@@ -108,7 +108,7 @@ export default function LandingPage({ onLaunchWebApp }) {
                     WR-88492019
                   </span>
                 </div>
-                <div className="text-3xl font-extrabold text-white mb-6">$250,000.00</div>
+                <div className="text-3xl font-extrabold text-white mb-6">$0.00</div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-slate-800/60 rounded-xl py-2.5 text-center text-xs font-bold text-slate-200">
                     Receive ↙

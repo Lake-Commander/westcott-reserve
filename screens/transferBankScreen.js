@@ -39,20 +39,15 @@ const TransferBankScreen = ({ navigation, route }) => {
     if (route?.params?.selectedBeneficiary) {
       const b = route.params.selectedBeneficiary;
 
-      const rawAcc = b.accountNumber || b.identifier || b.id || '';
-      const cleanAcc = rawAcc.startsWith('@')
-        ? rawAcc.replace(/^@/, '')
-        : (rawAcc.replace(/[^0-9]/g, '') || rawAcc);
+      const rawAcc = b.accountNumber || b.identifier || '';
+      const cleanAcc = rawAcc.replace(/[^0-9]/g, '');
 
       setAccountNumber(cleanAcc);
 
       const targetBank = b.isWestcott ? 'Westcott Reserve Bank' : b.bank || 'Westcott Reserve Bank';
       setSelectedBank(targetBank);
-
-      if (b.name) {
-        setResolvedName(b.name.toUpperCase());
-        setVerifyStatus('verified');
-      }
+      setResolvedName(null);
+      setVerifyStatus('idle');
     } else {
       if (route?.params?.recipientAccount) {
         setAccountNumber(route.params.recipientAccount.replace(/^@/, ''));
@@ -67,7 +62,7 @@ const TransferBankScreen = ({ navigation, route }) => {
     }
   }, [route?.params]);
 
-  const currentBalance = currentUser?.balance ? parseFloat(currentUser.balance) : 250000.0;
+  const currentBalance = parseFloat(currentUser?.balance ?? '0') || 0;
   const formatCurrency = (value) => new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: accountCurrency,
@@ -75,13 +70,17 @@ const TransferBankScreen = ({ navigation, route }) => {
   }).format(value);
   const isAccComplete = accountNumber.trim().length >= 5;
 
+  const handleAccountNumberChange = (value) => {
+    setAccountNumber(value);
+    setResolvedName(null);
+    setVerifyStatus('idle');
+  };
+
   useEffect(() => {
     const cleanAcc = accountNumber.trim();
     if (!isAccComplete || !selectedBank) {
-      if (!resolvedName) {
-        setVerifyStatus('idle');
-        setResolvedName(null);
-      }
+      setVerifyStatus('idle');
+      setResolvedName(null);
       return;
     }
 
@@ -102,9 +101,13 @@ const TransferBankScreen = ({ navigation, route }) => {
             setResolvedName(res.name.toUpperCase());
           } else {
             setVerifyStatus('unverified');
+            setResolvedName(null);
           }
         } catch {
-          if (isMounted) setVerifyStatus('unverified');
+          if (isMounted) {
+            setResolvedName(null);
+            setVerifyStatus('unverified');
+          }
         }
       } else {
         if (isMounted) setVerifyStatus('verified');
@@ -161,6 +164,7 @@ const TransferBankScreen = ({ navigation, route }) => {
           identifier: accountNumber.trim(),
           bank: selectedBank || 'Westcott Reserve Bank',
           isWestcott: (selectedBank || '').toLowerCase().includes('westcott'),
+          accountNumber: accountNumber.trim(),
         });
       }
 
@@ -261,13 +265,7 @@ const TransferBankScreen = ({ navigation, route }) => {
               placeholder="Enter account number"
               placeholderTextColor={theme.textMuted}
               value={accountNumber}
-              onChangeText={(txt) => {
-                setAccountNumber(txt);
-                if (txt.trim().length < 5) {
-                  setVerifyStatus('idle');
-                  setResolvedName(null);
-                }
-              }}
+              onChangeText={handleAccountNumberChange}
               autoCapitalize="none"
               keyboardType="number-pad"
             />

@@ -5,13 +5,16 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   name TEXT DEFAULT 'Account Holder',
   username TEXT UNIQUE,
   account_number TEXT UNIQUE DEFAULT ('80' || floor(random() * (90000000) + 10000000)::text),
-  balance NUMERIC(12, 2) DEFAULT 250000.00,
+  balance NUMERIC(12, 2) DEFAULT 0.00,
   savings_balance NUMERIC(12, 2) DEFAULT 0.00,
   currency TEXT DEFAULT 'USD',
   mpin TEXT DEFAULT '0000',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+-- Update existing installations without changing any stored account balances.
+ALTER TABLE public.profiles
+  ALTER COLUMN balance SET DEFAULT 0.00;
 
 -- Create transactions table
 CREATE TABLE IF NOT EXISTS public.transactions (
@@ -27,6 +30,10 @@ CREATE TABLE IF NOT EXISTS public.transactions (
   timestamp TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+ALTER TABLE public.transactions
+  ADD COLUMN IF NOT EXISTS receiver_name TEXT,
+  ADD COLUMN IF NOT EXISTS account_number TEXT,
+  ADD COLUMN IF NOT EXISTS bank_name TEXT;
 
 -- Enable Row Level Security (RLS)
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
@@ -252,6 +259,41 @@ $$;
 REVOKE ALL ON FUNCTION public.is_account_active() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.is_account_active() TO authenticated;
 
+CREATE OR REPLACE FUNCTION public.resolve_transfer_recipient(p_query TEXT)
+RETURNS TABLE (
+  id UUID,
+  name TEXT,
+  username TEXT,
+  account_number TEXT,
+  is_self BOOLEAN
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  lookup_value TEXT;
+BEGIN
+  IF auth.uid() IS NULL OR NOT public.is_account_active() THEN
+    RAISE EXCEPTION 'A signed-in active account is required';
+  END IF;
+  lookup_value := lower(regexp_replace(btrim(COALESCE(p_query, '')), '^@', ''));
+  IF lookup_value = '' OR char_length(lookup_value) > 100 THEN
+    RAISE EXCEPTION 'A valid username or account number is required';
+  END IF;
+
+  RETURN QUERY
+    SELECT p.id, p.name, p.username, p.account_number, p.id = auth.uid()
+    FROM public.profiles AS p
+    WHERE lower(p.username) = lookup_value OR p.account_number = btrim(p_query)
+    ORDER BY (p.account_number = btrim(p_query)) DESC
+    LIMIT 1;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.resolve_transfer_recipient(TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.resolve_transfer_recipient(TEXT) TO authenticated;
+
 DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
 CREATE POLICY "Users can view own profile"
   ON public.profiles FOR SELECT TO authenticated
@@ -343,6 +385,100 @@ DROP POLICY IF EXISTS "Admins can view audit log" ON public.admin_audit_log;
 CREATE POLICY "Admins can view audit log"
   ON public.admin_audit_log FOR SELECT TO authenticated
   USING (public.is_admin());
+
+-- Admin membership is managed only by a database administrator in the
+-- Supabase SQL Editor. These functions are not callable from the app/API.
+CREATE OR REPLACE FUNCTION public.admin_grant_access(p_email TEXT)
+RETURNS VOID
+LANGUAGE plpgsql
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+  target_user_id UUID;
+BEGIN
+  IF current_user NOT IN ('postgres', 'supabase_admin') THEN
+    RAISE EXCEPTION 'Database administrator access required';
+  END IF;
+  IF p_email IS NULL OR btrim(p_email) = '' THEN
+    RAISE EXCEPTION 'A user email is required';
+  END IF;
+
+  SELECT u.id INTO target_user_id
+  FROM auth.users AS u
+  WHERE lower(u.email) = lower(btrim(p_email));
+  IF target_user_id IS NULL THEN
+    RAISE EXCEPTION 'No authenticated user was found for that email';
+  END IF;
+
+  LOCK TABLE public.admin_users IN EXCLUSIVE MODE;
+  INSERT INTO public.admin_users (user_id)
+  VALUES (target_user_id)
+  ON CONFLICT (user_id) DO NOTHING;
+
+  IF FOUND THEN
+    INSERT INTO public.admin_audit_log (action, entity_type, entity_id, details)
+    VALUES (
+      'admin_access_granted',
+      'admin_user',
+      target_user_id::TEXT,
+      jsonb_build_object('source', 'sql_editor')
+    );
+  END IF;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.admin_grant_access(TEXT)
+  FROM PUBLIC, anon, authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.admin_revoke_access(p_email TEXT)
+RETURNS VOID
+LANGUAGE plpgsql
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+  target_user_id UUID;
+  admin_count BIGINT;
+BEGIN
+  IF current_user NOT IN ('postgres', 'supabase_admin') THEN
+    RAISE EXCEPTION 'Database administrator access required';
+  END IF;
+  IF p_email IS NULL OR btrim(p_email) = '' THEN
+    RAISE EXCEPTION 'A user email is required';
+  END IF;
+
+  SELECT u.id INTO target_user_id
+  FROM auth.users AS u
+  WHERE lower(u.email) = lower(btrim(p_email));
+  IF target_user_id IS NULL THEN
+    RAISE EXCEPTION 'No authenticated user was found for that email';
+  END IF;
+
+  LOCK TABLE public.admin_users IN EXCLUSIVE MODE;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.admin_users WHERE user_id = target_user_id
+  ) THEN
+    RAISE EXCEPTION 'That user does not have admin access';
+  END IF;
+  SELECT count(*) INTO admin_count FROM public.admin_users;
+  IF admin_count <= 1 THEN
+    RAISE EXCEPTION 'Cannot revoke access from the last administrator';
+  END IF;
+
+  DELETE FROM public.admin_users WHERE user_id = target_user_id;
+  INSERT INTO public.admin_audit_log (action, entity_type, entity_id, details)
+  VALUES (
+    'admin_access_revoked',
+    'admin_user',
+    target_user_id::TEXT,
+    jsonb_build_object('source', 'sql_editor')
+  );
+END;
+$$;
+REVOKE ALL ON FUNCTION public.admin_revoke_access(TEXT)
+  FROM PUBLIC, anon, authenticated, service_role;
+
+-- In Supabase SQL Editor, run:
+-- SELECT public.admin_grant_access('admin@example.com');
+-- SELECT public.admin_revoke_access('admin@example.com');
 
 CREATE TABLE IF NOT EXISTS public.customer_care_messages (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

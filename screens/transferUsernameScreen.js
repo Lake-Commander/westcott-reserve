@@ -110,7 +110,7 @@ const TransferUsernameScreen = ({ navigation, route }) => {
       return;
     }
 
-    const currentBal = parseFloat(currentUser?.balance) || 250000.0;
+    const currentBal = parseFloat(currentUser?.balance ?? '0') || 0;
     if (numAmt > currentBal) {
       Alert.alert('Insufficient Balance', 'Your available balance cannot complete this transfer.');
       return;
@@ -137,9 +137,10 @@ const TransferUsernameScreen = ({ navigation, route }) => {
       if (saveRecipient) {
         await BankService.saveBeneficiary(currentUser?.id, {
           name: targetUser.name,
-          identifier: `@${cleanUsername}`,
+          identifier: `@${(targetUser.username || cleanUsername).replace(/^@/, '')}`,
           bank: 'Westcott Reserve Bank',
           isWestcott: true,
+          accountNumber: targetUser.accountNumber,
         });
       }
 
@@ -200,7 +201,7 @@ const TransferUsernameScreen = ({ navigation, route }) => {
       Alert.alert('Enter Amount', 'Please specify a valid transfer amount.');
       return;
     }
-    const currentBal = parseFloat(currentUser?.balance) || 250000.0;
+    const currentBal = parseFloat(currentUser?.balance ?? '0') || 0;
     if (numAmt > currentBal) {
       Alert.alert('Insufficient Balance', 'Your available balance cannot complete this transfer.');
       return;

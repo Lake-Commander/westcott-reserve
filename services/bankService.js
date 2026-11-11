@@ -30,7 +30,7 @@ export const BankService = {
 
       const { data, error } = await supabase
         .from('transactions')
-        .select('*')
+        .select('counterparty, reference, bank_name, receiver_name, account_number')
         .eq('user_id', userId)
         .eq('type', 'DEBIT')
         .order('created_at', { ascending: false });
@@ -41,44 +41,44 @@ export const BankService = {
 
       for (const item of data || []) {
         const rawTarget = item.counterparty || item.reference;
-        if (rawTarget && !map.has(rawTarget)) {
-          const bankName = item.bank_name || 'Westcott Reserve Bank';
-          const isWestcott =
-            bankName.toLowerCase().includes('westcott') ||
-            !item.bank_name ||
-            rawTarget.startsWith('@');
+        if (!rawTarget) continue;
 
-          let resolvedHandle = rawTarget.startsWith('@') ? rawTarget.replace(/^@/, '') : rawTarget;
-          let resolvedName = item.receiver_name || resolvedHandle;
-          let accNumber = item.account_number || item.receiver_account || null;
+        const bankName = item.bank_name || 'Westcott Reserve Bank';
+        const isWestcott =
+          bankName.toLowerCase().includes('westcott') ||
+          rawTarget.startsWith('@');
+        let username = rawTarget.startsWith('@') ? rawTarget.replace(/^@/, '') : null;
+        let recipientName = item.receiver_name || rawTarget;
+        let accountNumber =
+          item.account_number?.replace(/[^0-9]/g, '') ||
+          (!isWestcott ? rawTarget.replace(/[^0-9]/g, '') : null);
 
-          const cleanQuery = resolvedHandle.trim().toLowerCase();
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('name, username, account_number')
-            .or(`username.ilike.${cleanQuery},account_number.eq.${cleanQuery},name.ilike.%${cleanQuery}%`)
-            .maybeSingle();
-
-          if (profile) {
-            resolvedName = profile.name;
-            resolvedHandle = profile.username || resolvedHandle;
-            if (profile.account_number) {
-              accNumber = profile.account_number;
-            }
+        if (isWestcott) {
+          const lookup = username || accountNumber || rawTarget;
+          const recipient = await BankService.resolveRecipient(lookup, userId);
+          if (recipient && !recipient.isSelf) {
+            username = recipient.username || username;
+            recipientName = recipient.name || recipientName;
+            accountNumber =
+              recipient.accountNumber?.replace(/[^0-9]/g, '') || accountNumber;
           }
+        }
 
-          const cleanNumericAcc = accNumber
-            ? accNumber.replace(/[^0-9]/g, '')
-            : rawTarget.replace(/[^0-9]/g, '');
+        const cleanUsername = username?.trim().replace(/^@/, '').toLowerCase() || null;
+        const identifier = isWestcott
+          ? cleanUsername ? `@${cleanUsername}` : accountNumber || rawTarget
+          : accountNumber || rawTarget;
+        const beneficiaryKey = isWestcott
+          ? `westcott:${cleanUsername || accountNumber || identifier}`.toLowerCase()
+          : `${bankName.toLowerCase()}:${accountNumber || identifier}`.toLowerCase();
 
-          const cleanHandle = resolvedHandle.toLowerCase().replace(/\s+/g, '');
-
-          map.set(rawTarget, {
-            id: rawTarget,
-            name: resolvedName,
-            username: cleanHandle,
-            accountNumber: cleanNumericAcc || cleanHandle,
-            identifier: isWestcott ? `@${cleanHandle}` : cleanNumericAcc || rawTarget,
+        if (!map.has(beneficiaryKey)) {
+          map.set(beneficiaryKey, {
+            id: beneficiaryKey,
+            name: recipientName,
+            username: cleanUsername,
+            accountNumber,
+            identifier,
             bank: bankName,
             isWestcott,
           });
@@ -112,7 +112,13 @@ export const BankService = {
     }
   },
 
-  saveBeneficiary: async (userId, { name, identifier, bank, isWestcott }) => {
+  saveBeneficiary: async (userId, {
+    name,
+    identifier,
+    bank,
+    isWestcott,
+    accountNumber,
+  }) => {
     try {
       if (!userId) return false;
 
@@ -124,6 +130,7 @@ export const BankService = {
           amount: 0.0,
           receiver_name: name,
           counterparty: identifier,
+          account_number: accountNumber || (!isWestcott ? identifier : null),
           bank_name: bank || 'Westcott Reserve Bank',
           note: 'Saved Beneficiary',
           created_at: new Date().toISOString(),
@@ -139,26 +146,26 @@ export const BankService = {
   },
 
   resolveRecipient: async (query, currentUserId) => {
-    const clean = query.trim().replace(/^@/, '');
+    const clean = query?.trim().replace(/^@/, '');
     if (!clean) return null;
 
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, name, username, account_number')
-      .or(`account_number.eq.${clean},username.ilike.${clean}`)
-      .maybeSingle();
+    const { data, error } = await supabase.rpc('resolve_transfer_recipient', {
+      p_query: clean,
+    });
 
-    if (error || !data) return null;
+    if (error) throw error;
+    const recipient = data?.[0];
+    if (!recipient) return null;
 
-    if (data.id === currentUserId) {
-      return { isSelf: true, name: data.name };
+    if (recipient.is_self || recipient.id === currentUserId) {
+      return { isSelf: true, name: recipient.name };
     }
 
     return {
-      id: data.id,
-      name: data.name,
-      username: data.username,
-      accountNumber: data.account_number,
+      id: recipient.id,
+      name: recipient.name,
+      username: recipient.username,
+      accountNumber: recipient.account_number,
       isSelf: false,
     };
   },

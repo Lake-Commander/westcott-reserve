@@ -30,11 +30,11 @@ const HomeScreen = ({ navigation }) => {
   const { config } = useAppUIConfig();
 
   const [user, setUser] = useState(reduxUser || null);
-  const [balance, setBalance] = useState(reduxUser?.balance || 250000.0);
+  const [balance, setBalance] = useState(reduxUser?.balance ?? 0);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(!reduxUser?.id);
   const [refreshing, setRefreshing] = useState(false);
-  const [showBalance, setShowBalance] = useState(true);
+  const [showBalance, setShowBalance] = useState(false);
   const [showBalanceOnLaunch, setShowBalanceOnLaunch] = useState(true);
   const [balanceSettingsLoaded, setBalanceSettingsLoaded] = useState(false);
   const [notificationCount, setNotificationCount] = useState(0);
@@ -151,7 +151,7 @@ const HomeScreen = ({ navigation }) => {
               name: resolvedName,
               username: resolvedUsername,
               account_number: genAcc,
-              balance: 250000.0,
+              balance: 0,
               currency: "USD",
               mpin: "0000",
             },
@@ -353,6 +353,8 @@ const HomeScreen = ({ navigation }) => {
             <TouchableOpacity
               accessibilityRole="button"
               accessibilityLabel={showBalance ? 'Hide balance' : 'Show balance'}
+              accessibilityState={{ disabled: !balanceSettingsLoaded }}
+              disabled={!balanceSettingsLoaded}
               onPress={toggleBalanceVisibility}
               style={styles.eyeBtn}
             >

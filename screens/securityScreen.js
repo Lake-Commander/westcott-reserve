@@ -156,7 +156,7 @@ const SecurityScreen = ({ navigation }) => {
               <View style={styles.balanceSettingText}>
                 <Text style={[styles.rowTitle, { color: theme.textPrimary }]}>Show balance on launch</Text>
                 <Text style={[styles.rowDescription, { color: theme.textSecondary }]}>
-                  When off, the eye control cannot reveal your balance.
+                  When off, your balance starts hidden. Use the eye on Home to show or hide it anytime.
                 </Text>
               </View>
             </View>

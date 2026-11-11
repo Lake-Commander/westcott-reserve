@@ -53,7 +53,7 @@ const PersonalInfoScreen = ({ navigation }) => {
           name: resolvedName,
           email: resolvedEmail,
           account_number: resolvedAcc,
-          phone: dbProfile?.phone || authUser.phone || '09034228879',
+          phone: dbProfile?.phone || authUser.phone || 'unverified',
           username: dbProfile?.username || (resolvedEmail ? resolvedEmail.split('@')[0] : 'user'),
         };
 
@@ -79,7 +79,7 @@ const PersonalInfoScreen = ({ navigation }) => {
   const lastName = nameParts.slice(1).join(' ') || '';
   const email = user?.email || '';
   const username = user?.username || (email ? email.split('@')[0] : 'user');
-  const phone = user?.phone || '09034228879';
+  const phone = user?.phone || 'unverified';
 
   const userInitials = rawName
     ? rawName

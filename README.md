@@ -298,12 +298,17 @@ grant administrative access.
    it from the Supabase SQL editor (replace the example address):
 
    ```sql
-   INSERT INTO public.admin_users (user_id)
-   SELECT id FROM auth.users WHERE email = lower('admin@example.com')
-   ON CONFLICT (user_id) DO NOTHING;
+   SELECT public.admin_grant_access('admin@example.com');
    ```
 
-   Repeat this as a trusted database administrator for each authorized admin.
+   To revoke access, run:
+
+   ```sql
+   SELECT public.admin_revoke_access('admin@example.com');
+   ```
+
+   These functions can only be executed by the database administrator through
+   SQL Editor, write to `admin_audit_log`, and prevent revoking the last admin.
    Never add a self-service admin sign-up or expose the `admin_users` table.
 3. Add these values to GitHub Actions. The APK workflow syncs them to the
    Vercel production environment before building and deploying the website:
