@@ -63,16 +63,16 @@ jobs:
 
       - name: Build Westcott Reserve APK
         env:
-          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
-          EXPO_PUBLIC_SUPABASE_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_KEY }}
-          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL || vars.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_KEY || vars.EXPO_PUBLIC_SUPABASE_KEY }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY || vars.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
           EXPO_PUBLIC_EAS_PROJECT_ID: ${{ secrets.EXPO_PUBLIC_EAS_PROJECT_ID }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          test -n "$EXPO_PUBLIC_SUPABASE_URL" || { echo "Missing EXPO_PUBLIC_SUPABASE_URL repository secret"; exit 1; }
-          test -n "$EXPO_PUBLIC_SUPABASE_KEY" || test -n "$EXPO_PUBLIC_SUPABASE_ANON_KEY" || { echo "Missing EXPO_PUBLIC_SUPABASE_KEY repository secret (or legacy EXPO_PUBLIC_SUPABASE_ANON_KEY)"; exit 1; }
+          test -n "$EXPO_PUBLIC_SUPABASE_URL" || { echo "Missing EXPO_PUBLIC_SUPABASE_URL repository secret or variable"; exit 1; }
+          test -n "$EXPO_PUBLIC_SUPABASE_KEY" || test -n "$EXPO_PUBLIC_SUPABASE_ANON_KEY" || { echo "Missing EXPO_PUBLIC_SUPABASE_KEY repository secret or variable (or legacy EXPO_PUBLIC_SUPABASE_ANON_KEY secret)"; exit 1; }
           test -s "$ANDROID_KEYSTORE_PATH" || { echo "Production keystore was not prepared"; exit 1; }
           chmod +x android/gradlew
           ./android/gradlew -p android :app:assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
@@ -111,18 +111,18 @@ jobs:
       - name: Sync production server secrets to Vercel
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
-          EXPO_PUBLIC_SUPABASE_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_KEY }}
-          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL || vars.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_KEY || vars.EXPO_PUBLIC_SUPABASE_KEY }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY || vars.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
-          BREVO_SENDER_EMAIL: ${{ secrets.BREVO_SENDER_EMAIL }}
-          BREVO_SENDER_NAME: ${{ secrets.BREVO_SENDER_NAME }}
-          BREVO_REPLY_TO_EMAIL: ${{ secrets.BREVO_REPLY_TO_EMAIL }}
+          BREVO_SENDER_EMAIL: ${{ secrets.BREVO_SENDER_EMAIL || vars.BREVO_SENDER_EMAIL }}
+          BREVO_SENDER_NAME: ${{ secrets.BREVO_SENDER_NAME || vars.BREVO_SENDER_NAME }}
+          BREVO_REPLY_TO_EMAIL: ${{ secrets.BREVO_REPLY_TO_EMAIL || vars.BREVO_REPLY_TO_EMAIL }}
         run: |
           public_key="${EXPO_PUBLIC_SUPABASE_KEY:-$EXPO_PUBLIC_SUPABASE_ANON_KEY}"
-          test -n "$EXPO_PUBLIC_SUPABASE_URL" || { echo "Missing EXPO_PUBLIC_SUPABASE_URL repository secret"; exit 1; }
-          test -n "$public_key" || { echo "Missing EXPO_PUBLIC_SUPABASE_KEY (or legacy EXPO_PUBLIC_SUPABASE_ANON_KEY) repository secret"; exit 1; }
+          test -n "$EXPO_PUBLIC_SUPABASE_URL" || { echo "Missing EXPO_PUBLIC_SUPABASE_URL repository secret or variable"; exit 1; }
+          test -n "$public_key" || { echo "Missing EXPO_PUBLIC_SUPABASE_KEY repository secret or variable (or legacy EXPO_PUBLIC_SUPABASE_ANON_KEY secret)"; exit 1; }
           test -n "$SUPABASE_SERVICE_ROLE_KEY" || { echo "Missing SUPABASE_SERVICE_ROLE_KEY repository secret"; exit 1; }
           test -n "$BREVO_API_KEY" || { echo "Missing BREVO_API_KEY repository secret"; exit 1; }
           test -n "$BREVO_SENDER_EMAIL" || { echo "Missing BREVO_SENDER_EMAIL repository secret"; exit 1; }
@@ -147,9 +147,9 @@ jobs:
       - name: Build and Deploy Website with APK
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
-          EXPO_PUBLIC_SUPABASE_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_KEY }}
-          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL || vars.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_KEY || vars.EXPO_PUBLIC_SUPABASE_KEY }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY || vars.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
           EXPO_PUBLIC_EAS_PROJECT_ID: ${{ secrets.EXPO_PUBLIC_EAS_PROJECT_ID }}
         run: |
           vercel build --prod --token="$VERCEL_TOKEN"

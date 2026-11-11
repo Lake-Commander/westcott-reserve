@@ -97,18 +97,19 @@ provides (including DKIM and its recommended SPF configuration). Verify
 records; merge provider includes as directed by your DNS host. Publish a DMARC
 policy once the domain's sender records are correct.
 
-For app-admin emails, add the following as GitHub Actions repository secrets.
-The APK workflow syncs them to the Vercel production project before the website
-build and deployment:
+For app-admin emails, add the following to GitHub Actions repository secrets
+or variables. The APK workflow syncs them to the Vercel production project
+before the website build and deployment:
 
-- `BREVO_API_KEY`: Brevo API key, kept server-side.
+- `BREVO_API_KEY`: Brevo API key; this must be a GitHub secret.
 - `BREVO_SENDER_EMAIL`: `no-reply@westcottreserve.com`.
 - `BREVO_SENDER_NAME`: `Westcott Reserve`.
 - `BREVO_REPLY_TO_EMAIL`: optional; defaults to `support@westcottreserve.com`.
 
-Also add `SUPABASE_SERVICE_ROLE_KEY` and the Supabase URL/public key secrets
-listed in the deployment setup below. The workflow never passes the service
-role key or Brevo key into the APK build.
+Also add `SUPABASE_SERVICE_ROLE_KEY` as a GitHub secret and the Supabase
+URL/public key as either secrets or variables. Sender email/name and reply-to
+are not credentials and may be GitHub variables. The workflow never passes
+the service-role key or Brevo key into the APK build.
 
 The admin email function sends customer-care replies and admin announcements
 from the verified sender, with replies directed to customer care. The in-app
@@ -304,16 +305,21 @@ grant administrative access.
 
    Repeat this as a trusted database administrator for each authorized admin.
    Never add a self-service admin sign-up or expose the `admin_users` table.
-3. Add the following as GitHub Actions repository secrets. The APK workflow
-   syncs them to the Vercel production environment before building and
-   deploying the website:
-   `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_KEY` (or the legacy
-   `EXPO_PUBLIC_SUPABASE_ANON_KEY`), `SUPABASE_SERVICE_ROLE_KEY`,
-   `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, and `BREVO_SENDER_NAME`.
-   `BREVO_REPLY_TO_EMAIL` is optional; the email API defaults to
-   `support@westcottreserve.com`. The service-role key and Brevo key remain
-   server-side and are not passed into the APK build. Never commit `.env` or
-   `.env.local`; local environment files are not uploaded to GitHub or Vercel.
+3. Add these values to GitHub Actions. The APK workflow syncs them to the
+   Vercel production environment before building and deploying the website:
+   - Secrets: `SUPABASE_SERVICE_ROLE_KEY`, `BREVO_API_KEY`; Android signing
+     values and `VERCEL_TOKEN` are also secrets.
+   - Secrets or variables: `EXPO_PUBLIC_SUPABASE_URL`,
+     `EXPO_PUBLIC_SUPABASE_KEY` (or the legacy
+     `EXPO_PUBLIC_SUPABASE_ANON_KEY` secret), `BREVO_SENDER_EMAIL`, and
+     `BREVO_SENDER_NAME`.
+   - Optional secret or variable: `BREVO_REPLY_TO_EMAIL`; the email API
+     defaults to `support@westcottreserve.com`.
+
+   Service-role, Brevo API, Android signing, and Vercel tokens remain
+   server-side or in the build environment and are never passed into the APK
+   as app credentials. Never commit `.env` or `.env.local`; local environment
+   files are not uploaded to GitHub or Vercel.
 
 The console can suspend or reactivate accounts, flag transactions, mark them
 paused, answer
