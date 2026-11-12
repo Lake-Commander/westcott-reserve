@@ -55,16 +55,35 @@ const ManageBeneficiariesScreen = ({ navigation, route }) => {
   );
 
   const handleSelectBeneficiary = (item) => {
-    if (returnTarget) {
-      navigation.navigate(returnTarget, { selectedBeneficiary: item });
+    const accNum = item.accountNumber || '';
+    const uname = item.username || '';
+
+    if (returnTarget === 'transferBank') {
+      navigation.navigate({
+        name: 'transferBank',
+        params: {
+          recipientAccount: accNum,
+          recipientBank: item.bank,
+          recipientName: item.name,
+        },
+        merge: true,
+      });
+    } else if (returnTarget === 'transferUsername') {
+      navigation.navigate({
+        name: 'transferUsername',
+        params: {
+          recipientUsername: uname,
+        },
+        merge: true,
+      });
     } else {
       if (item.isWestcott || item.identifier?.startsWith('@')) {
         navigation.navigate('transferUsername', {
-          recipientUsername: item.username || item.identifier.replace(/^@/, ''),
+          recipientUsername: uname,
         });
       } else {
         navigation.navigate('transferBank', {
-          recipientAccount: item.accountNumber || item.identifier.replace(/[^0-9]/g, ''),
+          recipientAccount: accNum,
           recipientBank: item.bank,
           recipientName: item.name,
         });

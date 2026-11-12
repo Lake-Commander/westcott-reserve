@@ -8,7 +8,6 @@ export const BankService = {
       .select('*')
       .eq('id', userId)
       .maybeSingle();
-
     if (error) throw error;
     return data;
   },
@@ -19,7 +18,6 @@ export const BankService = {
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
-
     if (error) throw error;
     return data || [];
   },
@@ -28,60 +26,73 @@ export const BankService = {
     try {
       if (!userId) return [];
 
-      const { data, error } = await supabase
+      // 1. Fetch transactions using your actual schema columns (including 'reference')
+      const { data: txs, error: txError } = await supabase
         .from('transactions')
-        .select('counterparty, reference, bank_name, receiver_name, account_number')
+        .select('counterparty, bank_name, receiver_name, account_number, reference')
         .eq('user_id', userId)
         .eq('type', 'DEBIT')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (txError) throw txError;
 
+      // 2. Fetch profiles using your actual schema columns
+      const { data: allProfiles } = await supabase
+        .from('profiles')
+        .select('id, name, username, account_number');
+        
+      const profiles = allProfiles || [];
       const map = new Map();
 
-      for (const item of data || []) {
-        const rawTarget = item.counterparty || item.reference;
+      for (const tx of txs || []) {
+        const rawTarget = tx.counterparty || tx.reference;
         if (!rawTarget) continue;
 
-        const bankName = item.bank_name || 'Westcott Reserve Bank';
-        const isWestcott =
-          bankName.toLowerCase().includes('westcott') ||
-          rawTarget.startsWith('@');
-        let username = rawTarget.startsWith('@') ? rawTarget.replace(/^@/, '') : null;
-        let recipientName = item.receiver_name || rawTarget;
-        let accountNumber =
-          item.account_number?.replace(/[^0-9]/g, '') ||
-          (!isWestcott ? rawTarget.replace(/[^0-9]/g, '') : null);
-
+        const bankName = tx.bank_name || 'Westcott Reserve Bank';
+        const isWestcott = bankName.toLowerCase().includes('westcott') || rawTarget.startsWith('@');
+        
         if (isWestcott) {
-          const lookup = username || accountNumber || rawTarget;
-          const recipient = await BankService.resolveRecipient(lookup, userId);
-          if (recipient && !recipient.isSelf) {
-            username = recipient.username || username;
-            recipientName = recipient.name || recipientName;
-            accountNumber =
-              recipient.accountNumber?.replace(/[^0-9]/g, '') || accountNumber;
+          const cleanTarget = rawTarget.replace(/^@/, '').trim().toLowerCase();
+          const txAccNum = tx.account_number ? tx.account_number.replace(/[^0-9]/g, '').trim() : null;
+          
+          // Match against your profiles table columns (username or account_number)
+          const matchedProfile = profiles.find(p => 
+            (p.username && p.username.toLowerCase() === cleanTarget) || 
+            p.account_number === cleanTarget ||
+            (txAccNum && p.account_number === txAccNum)
+          );
+
+          const finalUsername = matchedProfile?.username || (rawTarget.startsWith('@') ? cleanTarget : null);
+          const finalAccNum = matchedProfile?.account_number || txAccNum || (rawTarget.match(/^[0-9]+$/) ? rawTarget : null);
+          const finalName = matchedProfile?.name || tx.receiver_name || rawTarget;
+          const finalId = finalUsername ? `@${finalUsername}` : finalAccNum;
+
+          if (finalId && !map.has(`westcott:${finalId}`)) {
+            map.set(`westcott:${finalId}`, {
+              id: `westcott:${finalId}`,
+              name: finalName,
+              username: finalUsername,
+              accountNumber: finalAccNum,
+              identifier: finalId,
+              bank: 'Westcott Reserve Bank',
+              isWestcott: true
+            });
           }
-        }
+        } else {
+          const cleanAccNum = tx.account_number ? tx.account_number.replace(/[^0-9]/g, '').trim() : rawTarget.replace(/[^0-9]/g, '').trim();
+          const beneficiaryKey = `${bankName.toLowerCase()}:${cleanAccNum || rawTarget}`.toLowerCase();
 
-        const cleanUsername = username?.trim().replace(/^@/, '').toLowerCase() || null;
-        const identifier = isWestcott
-          ? cleanUsername ? `@${cleanUsername}` : accountNumber || rawTarget
-          : accountNumber || rawTarget;
-        const beneficiaryKey = isWestcott
-          ? `westcott:${cleanUsername || accountNumber || identifier}`.toLowerCase()
-          : `${bankName.toLowerCase()}:${accountNumber || identifier}`.toLowerCase();
-
-        if (!map.has(beneficiaryKey)) {
-          map.set(beneficiaryKey, {
-            id: beneficiaryKey,
-            name: recipientName,
-            username: cleanUsername,
-            accountNumber,
-            identifier,
-            bank: bankName,
-            isWestcott,
-          });
+          if (!map.has(beneficiaryKey)) {
+            map.set(beneficiaryKey, {
+              id: beneficiaryKey,
+              name: tx.receiver_name || rawTarget,
+              username: null,
+              accountNumber: cleanAccNum,
+              identifier: cleanAccNum || rawTarget,
+              bank: bankName,
+              isWestcott: false
+            });
+          }
         }
       }
 
@@ -95,52 +106,36 @@ export const BankService = {
   deleteBeneficiary: async (userId, beneficiaryId) => {
     try {
       if (!userId || !beneficiaryId) return false;
-
-      // Delete debit transaction history records for this counterparty target
       const { error } = await supabase
         .from('transactions')
         .delete()
         .eq('user_id', userId)
         .eq('type', 'DEBIT')
-        .or(`counterparty.eq.${beneficiaryId},reference.eq.${beneficiaryId}`);
-
+        .eq('counterparty', beneficiaryId);
       if (error) throw error;
       return true;
     } catch (err) {
-      console.warn('Failed to delete beneficiary from database:', err.message);
       return false;
     }
   },
 
-  saveBeneficiary: async (userId, {
-    name,
-    identifier,
-    bank,
-    isWestcott,
-    accountNumber,
-  }) => {
+  saveBeneficiary: async (userId, { name, identifier, bank, isWestcott, accountNumber }) => {
     try {
       if (!userId) return false;
-
-      // Upsert a zero-amount transaction record to register counterparty beneficiary entry
-      const { error } = await supabase.from('transactions').insert([
-        {
-          user_id: userId,
-          type: 'DEBIT',
-          amount: 0.0,
-          receiver_name: name,
-          counterparty: identifier,
-          account_number: accountNumber || (!isWestcott ? identifier : null),
-          bank_name: bank || 'Westcott Reserve Bank',
-          note: 'Saved Beneficiary',
-          created_at: new Date().toISOString(),
-        },
-      ]);
-
+      const { error } = await supabase.from('transactions').insert([{
+        user_id: userId,
+        type: 'DEBIT',
+        amount: 0.0,
+        receiver_name: name,
+        counterparty: identifier,
+        account_number: accountNumber || (!isWestcott ? identifier : null),
+        bank_name: bank || 'Westcott Reserve Bank',
+        note: 'Saved Beneficiary',
+        created_at: new Date().toISOString(),
+      }]);
       if (error) throw error;
       return true;
     } catch (err) {
-      console.warn('Failed to save beneficiary:', err.message);
       return false;
     }
   },
@@ -148,19 +143,11 @@ export const BankService = {
   resolveRecipient: async (query, currentUserId) => {
     const clean = query?.trim().replace(/^@/, '');
     if (!clean) return null;
-
-    const { data, error } = await supabase.rpc('resolve_transfer_recipient', {
-      p_query: clean,
-    });
-
+    const { data, error } = await supabase.rpc('resolve_transfer_recipient', { p_query: clean });
     if (error) throw error;
     const recipient = data?.[0];
     if (!recipient) return null;
-
-    if (recipient.is_self || recipient.id === currentUserId) {
-      return { isSelf: true, name: recipient.name };
-    }
-
+    if (recipient.is_self || recipient.id === currentUserId) return { isSelf: true, name: recipient.name };
     return {
       id: recipient.id,
       name: recipient.name,
@@ -170,38 +157,16 @@ export const BankService = {
     };
   },
 
-  executeNipTransfer: async ({
-    senderId,
-    receiverAccount,
-    receiverName,
-    bankName,
-    amount,
-    note,
-    currency = 'USD',
-    idempotencyKey = null,
-  }) => {
-    const { data: transferBlocked, error: restrictionError } = await supabase.rpc(
-      'is_account_transfer_blocked'
-    );
+  executeNipTransfer: async ({ senderId, receiverAccount, receiverName, bankName, amount, note, currency = 'USD', idempotencyKey = null }) => {
+    const { data: transferBlocked, error: restrictionError } = await supabase.rpc('is_account_transfer_blocked');
     if (restrictionError) throw restrictionError;
-    if (transferBlocked === true) {
-      throw new Error(
-        'We could not process this transfer. Please contact support@westcott.com for assistance.'
-      );
-    }
+    if (transferBlocked === true) throw new Error('We could not process this transfer. Please contact support@westcott.com for assistance.');
 
-    const { data: transfersEnabled, error: featureError } = await supabase.rpc(
-      'is_feature_enabled',
-      { p_feature_key: 'transfers' }
-    );
+    const { data: transfersEnabled, error: featureError } = await supabase.rpc('is_feature_enabled', { p_feature_key: 'transfers' });
     if (featureError) throw featureError;
-    if (transfersEnabled !== true) {
-      throw new Error('Transfers are temporarily unavailable.');
-    }
+    if (transfersEnabled !== true) throw new Error('Transfers are temporarily unavailable.');
 
-    const token =
-      idempotencyKey ||
-      `wr-tx-${senderId.slice(0, 8)}-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+    const token = idempotencyKey || `wr-tx-${senderId.slice(0, 8)}_${Date.now()}-${Math.floor(Math.random() * 100000)}`;
 
     const { data, error } = await supabase.rpc('process_banking_transfer', {
       p_sender_id: senderId,
@@ -222,20 +187,9 @@ export const BankService = {
   subscribeToUpdates: (userId, onUpdate) => {
     const channel = supabase
       .channel(`user-sync-${userId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` },
-        () => onUpdate()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'transactions', filter: `user_id=eq.${userId}` },
-        () => onUpdate()
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` }, () => onUpdate())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: `user_id=eq.${userId}` }, () => onUpdate())
       .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   },
 };

@@ -74,6 +74,8 @@ if (Platform.OS !== "web") {
 }
 
 const EmptyCenterScreen = () => null;
+
+// Kept global full-screen gates for features outside of transfers
 const CardsScreenWithGate = (props) => (
   <FeatureGate featureKey="cards">
     <CardsScreen {...props} />
@@ -87,31 +89,6 @@ const SavingsScreenWithGate = (props) => (
 const PayBillsScreenWithGate = (props) => (
   <FeatureGate featureKey="bill_payments">
     <PayBillsScreen {...props} />
-  </FeatureGate>
-);
-const TransferMenuScreenWithGate = (props) => (
-  <FeatureGate featureKey="transfers">
-    <TransferMenuScreen {...props} />
-  </FeatureGate>
-);
-const TransferUsernameScreenWithGate = (props) => (
-  <FeatureGate featureKey="transfers">
-    <TransferUsernameScreen {...props} />
-  </FeatureGate>
-);
-const TransferBankScreenWithGate = (props) => (
-  <FeatureGate featureKey="transfers">
-    <TransferBankScreen {...props} />
-  </FeatureGate>
-);
-const SelectBankScreenWithGate = (props) => (
-  <FeatureGate featureKey="transfers">
-    <SelectBankScreen {...props} />
-  </FeatureGate>
-);
-const TransferSuccessScreenWithGate = (props) => (
-  <FeatureGate featureKey="transfers">
-    <TransferSuccessScreen {...props} />
   </FeatureGate>
 );
 
@@ -246,12 +223,12 @@ const App = () => {
         <Stack.Screen name="savings" component={SavingsScreenWithGate} />
         <Stack.Screen name="globalAccounts" component={GlobalAccountsScreen} />
 
-        {/* Transfer Stack */}
-        <Stack.Screen name="transferMenu" component={TransferMenuScreenWithGate} />
-        <Stack.Screen name="transferUsername" component={TransferUsernameScreenWithGate} />
-        <Stack.Screen name="transferBank" component={TransferBankScreenWithGate} />
-        <Stack.Screen name="selectBank" component={SelectBankScreenWithGate} />
-        <Stack.Screen name="transferSuccess" component={TransferSuccessScreenWithGate} />
+        {/* Transfer Stack - We now load these directly so they can use interceptTap internally */}
+        <Stack.Screen name="transferMenu" component={TransferMenuScreen} />
+        <Stack.Screen name="transferUsername" component={TransferUsernameScreen} />
+        <Stack.Screen name="transferBank" component={TransferBankScreen} />
+        <Stack.Screen name="selectBank" component={SelectBankScreen} />
+        <Stack.Screen name="transferSuccess" component={TransferSuccessScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

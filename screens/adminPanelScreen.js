@@ -39,7 +39,8 @@ const SECTIONS = [
   { title: 'Overview', icon: 'grid-outline' },
   { title: 'Accounts', icon: 'people-outline' },
   { title: 'Transactions', icon: 'swap-horizontal-outline' },
-  { title: 'Customer care', icon: 'chatbubbles-outline' },
+  { title: 'Live Chat', icon: 'chatbubbles-outline' },
+  { title: 'Customer care', icon: 'mail-outline' },
   { title: 'Controls', icon: 'options-outline' },
   { title: 'App appearance', icon: 'color-palette-outline' },
   { title: 'Notifications', icon: 'notifications-outline' },
@@ -169,6 +170,72 @@ function Field({
   );
 }
 
+function FundAccountPanel({ profile, disabled, onFunded }) {
+  const [amount, setAmount] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  const applyFunds = async () => {
+    const numAmount = parseFloat(amount);
+    if (isNaN(numAmount) || numAmount <= 0) {
+      setErrorMsg('Enter a valid positive amount.');
+      return;
+    }
+    
+    const confirmationMessage = `Deposit ${formatCurrencyAmount(numAmount, profile.currency || 'USD')} into this account?`;
+    const confirmed = typeof window !== 'undefined' && typeof window.confirm === 'function'
+      ? window.confirm(confirmationMessage)
+      : await new Promise((resolve) => {
+          Alert.alert('Confirm Deposit', confirmationMessage, [
+            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Deposit', onPress: () => resolve(true) },
+          ], { onDismiss: () => resolve(false) });
+        });
+
+    if (!confirmed) return;
+
+    setBusy(true);
+    setErrorMsg('');
+    try {
+      const { error } = await supabase.rpc('admin_add_funds', {
+        p_user_id: profile.id,
+        p_amount: numAmount
+      });
+      if (error) throw error;
+      setAmount('');
+      await onFunded();
+    } catch (error) {
+      setErrorMsg(error.message || 'Failed to add funds.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <View style={styles.actionPanel}>
+      <Text style={styles.actionPanelTitle}>Deposit funds</Text>
+      <Text style={styles.mutedText}>
+        Current balance: {formatCurrencyAmount(profile.balance, profile.currency || 'USD')}
+      </Text>
+      <Field
+        label="Deposit amount"
+        value={amount}
+        onChangeText={(val) => setAmount(val.replace(/[^0-9.]/g, ''))}
+        placeholder="e.g. 500.00"
+        editable={!busy}
+      />
+      <View style={styles.stateButtons}>
+        <Button
+          title={busy ? 'Depositing...' : 'Confirm Deposit'}
+          onPress={applyFunds}
+          disabled={disabled || busy || !amount}
+        />
+      </View>
+      {!!errorMsg && <Text style={styles.error}>{errorMsg}</Text>}
+    </View>
+  );
+}
+
 function CurrencyConversionPanel({ profile, disabled, onConverted }) {
   const currentCurrency = (profile.currency || 'USD').toUpperCase();
   const [targetCurrency, setTargetCurrency] = useState(currentCurrency === 'EUR' ? 'USD' : 'EUR');
@@ -249,8 +316,8 @@ function CurrencyConversionPanel({ profile, disabled, onConverted }) {
     : null;
 
   return (
-    <View style={styles.currencyConversion}>
-      <Text style={styles.currencyConversionTitle}>Convert simulated main balance</Text>
+    <View style={styles.actionPanel}>
+      <Text style={styles.actionPanelTitle}>Convert simulated main balance</Text>
       <Text style={styles.mutedText}>
         Current balance: {formatCurrencyAmount(profile.balance, currentCurrency)}
       </Text>
@@ -302,6 +369,8 @@ export default function AdminPanelScreen() {
   const { width } = useWindowDimensions();
   const isWide = width >= 980;
   const { configError, replaceConfig } = useAppUIConfig();
+  
+  // Auth & UI State
   const [session, setSession] = useState(null);
   const [authorized, setAuthorized] = useState(false);
   const [checking, setChecking] = useState(true);
@@ -310,6 +379,8 @@ export default function AdminPanelScreen() {
   const [mfaCode, setMfaCode] = useState('');
   const [mfaRequired, setMfaRequired] = useState(false);
   const [section, setSection] = useState('Overview');
+  
+  // Data State
   const [profiles, setProfiles] = useState([]);
   const [transferRestrictedIds, setTransferRestrictedIds] = useState([]);
   const [transactions, setTransactions] = useState([]);
@@ -319,8 +390,17 @@ export default function AdminPanelScreen() {
   const [newBankName, setNewBankName] = useState('');
   const [newBankCountry, setNewBankCountry] = useState('');
   const [auditEvents, setAuditEvents] = useState([]);
+  
+  // Live Chat State
+  const [chatSessions, setChatSessions] = useState([]);
+  const [activeSessionId, setActiveSessionId] = useState(null);
+  const [activeChatMessages, setActiveChatMessages] = useState([]);
+  const [liveReplyText, setLiveReplyText] = useState('');
+  
+  // Interaction State
   const [pendingAccountChange, setPendingAccountChange] = useState(null);
   const [selectedCurrencyConversionId, setSelectedCurrencyConversionId] = useState(null);
+  const [selectedFundAccountId, setSelectedFundAccountId] = useState(null);
   const [selectedMessage, setSelectedMessage] = useState(null);
   const [reply, setReply] = useState('');
   const [noticeTitle, setNoticeTitle] = useState('');
@@ -328,6 +408,8 @@ export default function AdminPanelScreen() {
   const [noticeUserId, setNoticeUserId] = useState('');
   const [emailNotification, setEmailNotification] = useState(false);
   const [pushNotification, setPushNotification] = useState(true);
+  
+  // Loading & Feedback State
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState('');
   const [feedbackError, setFeedbackError] = useState(false);
@@ -374,7 +456,8 @@ export default function AdminPanelScreen() {
     const [
       profileResult,
       transactionResult,
-      supportResult,
+      chatSessionResult,
+      customerCareResult,
       featureResult,
       auditResult,
       uiConfigResult,
@@ -387,6 +470,11 @@ export default function AdminPanelScreen() {
           .select('id,user_id,type,amount,counterparty,created_at,review_status')
           .order('created_at', { ascending: false })
           .limit(150),
+        supabase
+          .from('support_chat_sessions')
+          .select('*, profiles(email)')
+          .order('created_at', { ascending: false })
+          .limit(100),
         supabase
           .from('customer_care_messages')
           .select('id,user_id,email,subject,message,status,admin_reply,created_at')
@@ -409,19 +497,21 @@ export default function AdminPanelScreen() {
     const failed = [
       profileResult,
       transactionResult,
-      supportResult,
+      chatSessionResult,
+      customerCareResult,
       featureResult,
       auditResult,
       uiConfigResult,
       transferRestrictionResult,
-    ].find(
-      (result) => result.error
-    );
+    ].find((result) => result.error);
+    
     if (failed) throw failed.error;
+    
     setProfiles(profileResult.data || []);
     setTransferRestrictedIds((transferRestrictionResult.data || []).map((row) => row.user_id));
     setTransactions(transactionResult.data || []);
-    setSupportMessages(supportResult.data || []);
+    setChatSessions(chatSessionResult.data || []);
+    setSupportMessages(customerCareResult.data || []);
     setFeatures(featureResult.data || []);
     setAuditEvents(auditResult.data || []);
     const loadedConfig = uiConfigResult.data?.config || DEFAULT_UI_CONFIG;
@@ -440,10 +530,48 @@ export default function AdminPanelScreen() {
 
   useEffect(() => {
     if (!authorized) return;
+    
+    // Initial fetch
     loadData().catch((error) => {
       setLoadError(error.message || 'Unable to load admin data.');
     });
+
+    // Auto-refresh interval (every 15 seconds)
+    const intervalId = setInterval(() => {
+      loadData().catch((error) => {
+         console.error("Auto-refresh failed:", error);
+      });
+    }, 15000);
+
+    return () => clearInterval(intervalId);
   }, [authorized, loadData]);
+
+  useEffect(() => {
+    if (!activeSessionId) return;
+    let channel;
+    
+    const loadThread = async () => {
+      const { data } = await supabase
+        .from('support_chat_messages')
+        .select('*')
+        .eq('session_id', activeSessionId)
+        .order('created_at', { ascending: true });
+      setActiveChatMessages(data || []);
+
+      channel = supabase.channel(`admin_chat_${activeSessionId}`)
+        .on('postgres_changes', { 
+            event: 'INSERT', 
+            schema: 'public', 
+            table: 'support_chat_messages', 
+            filter: `session_id=eq.${activeSessionId}` 
+          }, (payload) => {
+            setActiveChatMessages((current) => [...current, payload.new]);
+        }).subscribe();
+    };
+
+    loadThread();
+    return () => { if (channel) supabase.removeChannel(channel); };
+  }, [activeSessionId]);
 
   const signIn = async () => {
     setBusy(true);
@@ -603,6 +731,28 @@ export default function AdminPanelScreen() {
       setFeedback(emailStatus);
     } catch (error) {
       setFeedback(error.message || 'Unable to save the reply.');
+      setFeedbackError(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  
+  const sendLiveReply = async () => {
+    if (!activeSessionId || !liveReplyText.trim()) return;
+    setBusy(true);
+    setFeedbackError(false);
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const { error } = await supabase.from('support_chat_messages').insert({
+        session_id: activeSessionId,
+        sender_id: authData.user.id,
+        sender_role: 'admin',
+        message: liveReplyText.trim(),
+      });
+      if (error) throw error;
+      setLiveReplyText('');
+    } catch (error) {
+      setFeedback(error.message || 'Unable to send the reply.');
       setFeedbackError(true);
     } finally {
       setBusy(false);
@@ -1006,6 +1156,7 @@ export default function AdminPanelScreen() {
           </Text>
         )}
         {!!loadError && <Text style={styles.error}>{loadError}</Text>}
+        
         {section === 'Overview' && (
           <>
             <Text style={styles.sectionTitle}>Operations overview</Text>
@@ -1036,6 +1187,7 @@ export default function AdminPanelScreen() {
             </Card>
           </>
         )}
+        
         {section === 'Transactions' && (
           <>
             <Text style={styles.sectionTitle}>Transaction review</Text>
@@ -1068,6 +1220,7 @@ export default function AdminPanelScreen() {
             {transactions.length === 0 && <Text style={styles.mutedText}>No transactions found.</Text>}
           </>
         )}
+        
         {section === 'Accounts' && (
           <>
             <Text style={styles.sectionTitle}>Customer accounts</Text>
@@ -1087,36 +1240,68 @@ export default function AdminPanelScreen() {
                 <Text style={styles.mutedText}>
                   Outgoing transfers: {transferRestrictedIds.includes(profile.id) ? 'Restricted' : 'Allowed'}
                 </Text>
-                <Button
-                  title={
-                    transferRestrictedIds.includes(profile.id)
-                      ? 'Allow outgoing transfers'
-                      : 'Block outgoing transfers and email customer'
-                  }
-                  onPress={() =>
-                    setAccountTransferRestriction(
-                      profile,
-                      !transferRestrictedIds.includes(profile.id)
-                    )
-                  }
-                  disabled={busy}
-                  secondary={!transferRestrictedIds.includes(profile.id)}
-                  danger={!transferRestrictedIds.includes(profile.id)}
-                />
-                <Button
-                  title={
-                    selectedCurrencyConversionId === profile.id
-                      ? 'Close currency conversion'
-                      : 'Convert main balance currency'
-                  }
-                  onPress={() =>
-                    setSelectedCurrencyConversionId((current) =>
-                      current === profile.id ? null : profile.id
-                    )
-                  }
-                  disabled={busy}
-                  secondary
-                />
+                
+                <View style={styles.stateButtons}>
+                  <Button
+                    title={
+                      transferRestrictedIds.includes(profile.id)
+                        ? 'Allow outgoing transfers'
+                        : 'Block outgoing transfers'
+                    }
+                    onPress={() =>
+                      setAccountTransferRestriction(
+                        profile,
+                        !transferRestrictedIds.includes(profile.id)
+                      )
+                    }
+                    disabled={busy}
+                    secondary={!transferRestrictedIds.includes(profile.id)}
+                    danger={!transferRestrictedIds.includes(profile.id)}
+                  />
+                  
+                  <Button
+                    title={
+                      selectedFundAccountId === profile.id
+                        ? 'Close funding'
+                        : 'Add funds'
+                    }
+                    onPress={() =>
+                      setSelectedFundAccountId((current) =>
+                        current === profile.id ? null : profile.id
+                      )
+                    }
+                    disabled={busy}
+                    secondary
+                  />
+
+                  <Button
+                    title={
+                      selectedCurrencyConversionId === profile.id
+                        ? 'Close currency conversion'
+                        : 'Convert currency'
+                    }
+                    onPress={() =>
+                      setSelectedCurrencyConversionId((current) =>
+                        current === profile.id ? null : profile.id
+                      )
+                    }
+                    disabled={busy}
+                    secondary
+                  />
+                </View>
+
+                {selectedFundAccountId === profile.id && (
+                  <FundAccountPanel
+                    profile={profile}
+                    disabled={busy}
+                    onFunded={() => {
+                      setSelectedFundAccountId(null);
+                      loadData();
+                      setFeedback('Funds successfully added to the account.');
+                    }}
+                  />
+                )}
+
                 {selectedCurrencyConversionId === profile.id && (
                   <CurrencyConversionPanel
                     profile={profile}
@@ -1124,8 +1309,9 @@ export default function AdminPanelScreen() {
                     onConverted={loadData}
                   />
                 )}
+
                 {pendingAccountChange?.id === profile.id ? (
-                  <View style={styles.stateButtons}>
+                  <View style={[styles.stateButtons, { marginTop: 8 }]}>
                     <Button
                       title={`Confirm ${pendingAccountChange.active ? 'reactivation' : 'suspension'}`}
                       onPress={() => updateAccountAccess(profile.id, pendingAccountChange.active)}
@@ -1140,20 +1326,69 @@ export default function AdminPanelScreen() {
                     />
                   </View>
                 ) : (
-                  <Button
-                    title={profile.is_active ? 'Suspend account' : 'Reactivate account'}
-                    onPress={() =>
-                      setPendingAccountChange({ id: profile.id, active: !profile.is_active })
-                    }
-                    secondary={profile.is_active}
-                    danger={profile.is_active}
-                  />
+                  <View style={{ marginTop: 8 }}>
+                    <Button
+                      title={profile.is_active ? 'Suspend account' : 'Reactivate account'}
+                      onPress={() =>
+                        setPendingAccountChange({ id: profile.id, active: !profile.is_active })
+                      }
+                      secondary={profile.is_active}
+                      danger={profile.is_active}
+                    />
+                  </View>
                 )}
               </Card>
             ))}
             {profiles.length === 0 && <Text style={styles.mutedText}>No customer accounts found.</Text>}
           </>
         )}
+
+        {section === 'Live Chat' && (
+          <>
+            <Text style={styles.sectionTitle}>Live Support Chats</Text>
+            {chatSessions.map((chat) => (
+              <Card key={chat.id} title={chat.profiles?.email || 'Unknown User'}>
+                <Text style={styles.mutedText}>
+                  Status: {chat.status} · Started: {formatDate(chat.created_at)}
+                </Text>
+                
+                {activeSessionId === chat.id ? (
+                  <View style={{ marginTop: 10, gap: 10 }}>
+                    <View style={{ maxHeight: 300, backgroundColor: '#F8FAFC', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border }}>
+                      <ScrollView nestedScrollEnabled>
+                        {activeChatMessages.map(msg => (
+                          <View key={msg.id} style={{ marginBottom: 8, alignItems: msg.sender_role === 'admin' ? 'flex-end' : 'flex-start' }}>
+                            <View style={{ backgroundColor: msg.sender_role === 'admin' ? COLORS.primary : '#E2E7EF', padding: 10, borderRadius: 8, maxWidth: '85%' }}>
+                              <Text style={{ color: msg.sender_role === 'admin' ? '#FFF' : COLORS.ink, fontSize: 13 }}>{msg.message}</Text>
+                            </View>
+                          </View>
+                        ))}
+                      </ScrollView>
+                    </View>
+                    <Field label="Live Reply" value={liveReplyText} onChangeText={setLiveReplyText} placeholder="Type response..." multiline />
+                    <View style={styles.stateButtons}>
+                      <Button title="Send Live Reply" onPress={sendLiveReply} disabled={busy || !liveReplyText.trim()} />
+                      <Button 
+                        title="Close Chat" 
+                        onPress={() => runAction(() => supabase.from('support_chat_sessions').update({ status: 'closed' }).eq('id', chat.id), 'Chat closed')} 
+                        danger 
+                      />
+                      <Button title="Minimize" onPress={() => setActiveSessionId(null)} secondary />
+                    </View>
+                  </View>
+                ) : (
+                  <Button
+                    title={chat.status === 'open' ? 'Open Thread' : 'View History'}
+                    onPress={() => { setActiveSessionId(chat.id); setLiveReplyText(''); }}
+                    secondary={chat.status !== 'open'}
+                  />
+                )}
+              </Card>
+            ))}
+            {chatSessions.length === 0 && <Text style={styles.mutedText}>No chat sessions exist.</Text>}
+          </>
+        )}
+
         {section === 'Customer care' && (
           <>
             <Text style={styles.sectionTitle}>Customer care inbox</Text>
@@ -1195,6 +1430,7 @@ export default function AdminPanelScreen() {
             {supportMessages.length === 0 && <Text style={styles.mutedText}>The inbox is empty.</Text>}
           </>
         )}
+        
         {section === 'Controls' && (
           <>
             <Text style={styles.sectionTitle}>Feature controls</Text>
@@ -1221,6 +1457,7 @@ export default function AdminPanelScreen() {
             </Text>
           </>
         )}
+        
         {section === 'App appearance' && (
           <>
             <Text style={styles.sectionTitle}>App appearance</Text>
@@ -1494,6 +1731,7 @@ export default function AdminPanelScreen() {
             />
           </>
         )}
+        
         {section === 'Notifications' && (
           <>
             <Text style={styles.sectionTitle}>Send a notification</Text>
@@ -1733,7 +1971,6 @@ const styles = StyleSheet.create({
     flexGrow: 0,
     flexShrink: 0,
     paddingHorizontal: 20,
-   // paddingVertical: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -1779,14 +2016,15 @@ const styles = StyleSheet.create({
   cardTitle: { color: COLORS.ink, fontSize: 16, fontWeight: '700' },
   bodyText: { color: COLORS.ink, fontSize: 14, lineHeight: 21 },
   mutedText: { color: COLORS.muted, fontSize: 13, lineHeight: 19 },
-  currencyConversion: {
+  
+  actionPanel: {
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
     marginTop: 4,
     paddingTop: 12,
     gap: 10,
   },
-  currencyConversionTitle: { color: COLORS.ink, fontSize: 14, fontWeight: '700' },
+  actionPanelTitle: { color: COLORS.ink, fontSize: 14, fontWeight: '700' },
   ratePreview: {
     backgroundColor: '#F8FAFC',
     borderColor: COLORS.border,

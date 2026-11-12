@@ -811,6 +811,26 @@ $$;
 REVOKE ALL ON FUNCTION public.admin_create_notification(TEXT, TEXT, UUID) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.admin_create_notification(TEXT, TEXT, UUID) TO authenticated;
 
+--ADMIN ADD BALANCE CONTROL
+CREATE OR REPLACE FUNCTION admin_add_funds(p_user_id UUID, p_amount NUMERIC)
+RETURNS void AS $$
+BEGIN
+  -- Verify the caller is an admin
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Not authorized';
+  END IF;
+
+  -- Add the funds to the user's balance
+  UPDATE public.profiles
+  SET balance = COALESCE(balance, 0) + p_amount
+  WHERE id = p_user_id;
+
+  -- Log it as a transaction so it appears in their app history
+  INSERT INTO public.transactions (user_id, type, amount, counterparty, review_status)
+  VALUES (p_user_id, 'credit', p_amount, 'System Admin Deposit', 'normal');
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- Server-driven presentation settings. Only prebuilt app components/actions are
 -- configurable; this table never contains executable code.
 CREATE TABLE IF NOT EXISTS public.app_ui_config (
@@ -1340,6 +1360,74 @@ BEGIN
       ON public.device_sessions FOR UPDATE TO authenticated
       USING (auth.uid() = user_id AND public.is_account_active())
       WITH CHECK (auth.uid() = user_id AND public.is_account_active())';
+  END IF;
+END;
+$$;
+
+--LIVE CHAT SUPPORT SCHEMA
+-- 1. Create chat sessions table (the main thread)
+CREATE TABLE IF NOT EXISTS public.support_chat_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 2. Create chat messages table (individual texts in the thread)
+CREATE TABLE IF NOT EXISTS public.support_chat_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id UUID NOT NULL REFERENCES public.support_chat_sessions(id) ON DELETE CASCADE,
+  sender_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  sender_role TEXT NOT NULL CHECK (sender_role IN ('user', 'admin')),
+  message TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 3. Enable Row Level Security (RLS)
+ALTER TABLE public.support_chat_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.support_chat_messages ENABLE ROW LEVEL SECURITY;
+
+-- 4. Apply Security Policies for Sessions
+CREATE POLICY "Users can view own sessions" ON public.support_chat_sessions 
+  FOR SELECT TO authenticated USING (user_id = auth.uid());
+CREATE POLICY "Users can insert own sessions" ON public.support_chat_sessions 
+  FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
+CREATE POLICY "Users can update own sessions" ON public.support_chat_sessions 
+  FOR UPDATE TO authenticated USING (user_id = auth.uid());
+CREATE POLICY "Admins can view all sessions" ON public.support_chat_sessions 
+  FOR SELECT TO authenticated USING (public.is_admin());
+CREATE POLICY "Admins can update all sessions" ON public.support_chat_sessions 
+  FOR UPDATE TO authenticated USING (public.is_admin());
+
+-- 5. Apply Security Policies for Messages
+CREATE POLICY "Users can view own messages" ON public.support_chat_messages 
+  FOR SELECT TO authenticated USING (
+    EXISTS (SELECT 1 FROM public.support_chat_sessions WHERE id = session_id AND user_id = auth.uid())
+  );
+CREATE POLICY "Users can insert own messages" ON public.support_chat_messages 
+  FOR INSERT TO authenticated WITH CHECK (
+    EXISTS (SELECT 1 FROM public.support_chat_sessions WHERE id = session_id AND user_id = auth.uid()) 
+    AND sender_role = 'user'
+  );
+CREATE POLICY "Admins can view all messages" ON public.support_chat_messages 
+  FOR SELECT TO authenticated USING (public.is_admin());
+CREATE POLICY "Admins can insert all messages" ON public.support_chat_messages 
+  FOR INSERT TO authenticated WITH CHECK (public.is_admin() AND sender_role = 'admin');
+
+-- 6. Add tables to Supabase Realtime publication
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') AND NOT EXISTS (
+       SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'support_chat_sessions'
+     ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.support_chat_sessions;
+  END IF;
+  
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') AND NOT EXISTS (
+       SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'support_chat_messages'
+     ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.support_chat_messages;
   END IF;
 END;
 $$;

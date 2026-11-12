@@ -18,6 +18,7 @@ import { BankService } from '../services/bankService';
 import ScreenWrapper from '../components/ScreenWrapper';
 import { useAppTheme } from '../hooks/useAppTheme';
 import MpinVerificationModal from '../components/MpinVerificationModal';
+import FeatureGate from '../components/FeatureGate';
 
 const TransferUsernameScreen = ({ navigation, route }) => {
   const { theme } = useAppTheme();
@@ -32,19 +33,17 @@ const TransferUsernameScreen = ({ navigation, route }) => {
   const [mpinPromptVisible, setMpinPromptVisible] = useState(false);
 
   useEffect(() => {
-    let targetUsername = '';
-    if (route?.params?.selectedBeneficiary) {
-      const b = route.params.selectedBeneficiary;
-      targetUsername = (b.username || b.identifier || '').replace(/^@/, '').replace(/\s+/g, '').toLowerCase();
-    } else if (route?.params?.recipientUsername) {
-      targetUsername = route.params.recipientUsername.replace(/^@/, '').replace(/\s+/g, '').toLowerCase();
+    if (route?.params?.recipientUsername) {
+      const targetUsername = route.params.recipientUsername.replace(/^@/, '').replace(/\s+/g, '').toLowerCase();
+      
+      if (targetUsername) {
+        setUsername(targetUsername);
+        resolveUsername(targetUsername);
+      }
+      
+      navigation.setParams({ recipientUsername: undefined });
     }
-
-    if (targetUsername) {
-      setUsername(targetUsername);
-      resolveUsername(targetUsername);
-    }
-  }, [route?.params]);
+  }, [route?.params?.recipientUsername, navigation]);
 
   const resolveUsername = async (uname) => {
     const clean = uname.trim().replace(/^@/, '');
@@ -133,7 +132,6 @@ const TransferUsernameScreen = ({ navigation, route }) => {
         idempotencyKey,
       });
 
-      // Save beneficiary if checkbox toggled
       if (saveRecipient) {
         await BankService.saveBeneficiary(currentUser?.id, {
           name: targetUser.name,
@@ -301,14 +299,16 @@ const TransferUsernameScreen = ({ navigation, route }) => {
         </ScrollView>
 
         <View style={[styles.footer, { borderTopColor: theme.cardBorder }]}>
-          <TouchableOpacity
-            style={[styles.proceedBtn, { backgroundColor: theme.accent }, (!username.trim() || !amount || submitting) && styles.proceedDisabled]}
-            onPress={handleProceed}
-            disabled={!username.trim() || !amount || submitting}
-            activeOpacity={0.8}
-          >
-            {submitting ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.proceedText}>Proceed</Text>}
-          </TouchableOpacity>
+          <FeatureGate featureKey="transfers" fallbackMode="interceptTap">
+            <TouchableOpacity
+              style={[styles.proceedBtn, { backgroundColor: theme.accent }, (!username.trim() || !amount || submitting) && styles.proceedDisabled]}
+              onPress={handleProceed}
+              disabled={!username.trim() || !amount || submitting}
+              activeOpacity={0.8}
+            >
+              {submitting ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.proceedText}>Proceed</Text>}
+            </TouchableOpacity>
+          </FeatureGate>
         </View>
       </KeyboardAvoidingView>
       <MpinVerificationModal

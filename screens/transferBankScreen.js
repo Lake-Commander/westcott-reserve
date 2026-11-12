@@ -18,6 +18,7 @@ import { BankService } from '../services/bankService';
 import ScreenWrapper from '../components/ScreenWrapper';
 import { useAppTheme } from '../hooks/useAppTheme';
 import MpinVerificationModal from '../components/MpinVerificationModal';
+import FeatureGate from '../components/FeatureGate';
 
 const TransferBankScreen = ({ navigation, route }) => {
   const currentUser = useSelector((state) => state.userReducer?.user);
@@ -36,31 +37,21 @@ const TransferBankScreen = ({ navigation, route }) => {
   const [mpinPromptVisible, setMpinPromptVisible] = useState(false);
 
   useEffect(() => {
-    if (route?.params?.selectedBeneficiary) {
-      const b = route.params.selectedBeneficiary;
-
-      const rawAcc = b.accountNumber || b.identifier || '';
-      const cleanAcc = rawAcc.replace(/[^0-9]/g, '');
-
-      setAccountNumber(cleanAcc);
-
-      const targetBank = b.isWestcott ? 'Westcott Reserve Bank' : b.bank || 'Westcott Reserve Bank';
-      setSelectedBank(targetBank);
-      setResolvedName(null);
-      setVerifyStatus('idle');
-    } else {
-      if (route?.params?.recipientAccount) {
-        setAccountNumber(route.params.recipientAccount.replace(/^@/, ''));
+    if (route?.params?.recipientAccount || route?.params?.recipientBank || route?.params?.recipientName) {
+      if (route.params.recipientAccount) {
+        setAccountNumber(route.params.recipientAccount);
       }
-      if (route?.params?.recipientBank) {
+      if (route.params.recipientBank) {
         setSelectedBank(route.params.recipientBank);
       }
-      if (route?.params?.recipientName) {
-        setResolvedName(route.params.recipientName);
+      if (route.params.recipientName) {
+        setResolvedName(route.params.recipientName.toUpperCase());
         setVerifyStatus('verified');
       }
+      
+      navigation.setParams({ recipientAccount: undefined, recipientBank: undefined, recipientName: undefined });
     }
-  }, [route?.params]);
+  }, [route?.params?.recipientAccount, route?.params?.recipientBank, route?.params?.recipientName, navigation]);
 
   const currentBalance = parseFloat(currentUser?.balance ?? '0') || 0;
   const formatCurrency = (value) => new Intl.NumberFormat('en-US', {
@@ -157,7 +148,6 @@ const TransferBankScreen = ({ navigation, route }) => {
         idempotencyKey,
       });
 
-      // If user toggled "Add new recipient", save beneficiary to database
       if (saveRecipient) {
         await BankService.saveBeneficiary(currentUser?.id, {
           name: recipientLabel,
@@ -384,18 +374,20 @@ const TransferBankScreen = ({ navigation, route }) => {
         </ScrollView>
 
         <View style={[styles.bottomFooter, { borderTopColor: theme.cardBorder }]}>
-          <TouchableOpacity
-            style={[
-              styles.proceedBtn,
-              { backgroundColor: theme.accent },
-              (!accountNumber || !amount || verifyStatus === 'self' || submitting) && styles.proceedDisabled,
-            ]}
-            onPress={handleProceed}
-            disabled={!accountNumber || !amount || verifyStatus === 'self' || submitting}
-            activeOpacity={0.8}
-          >
-            {submitting ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.proceedBtnText}>Proceed</Text>}
-          </TouchableOpacity>
+          <FeatureGate featureKey="transfers" fallbackMode="interceptTap">
+            <TouchableOpacity
+              style={[
+                styles.proceedBtn,
+                { backgroundColor: theme.accent },
+                (!accountNumber || !amount || verifyStatus === 'self' || submitting) && styles.proceedDisabled,
+              ]}
+              onPress={handleProceed}
+              disabled={!accountNumber || !amount || verifyStatus === 'self' || submitting}
+              activeOpacity={0.8}
+            >
+              {submitting ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.proceedBtnText}>Proceed</Text>}
+            </TouchableOpacity>
+          </FeatureGate>
         </View>
       </KeyboardAvoidingView>
       <MpinVerificationModal
