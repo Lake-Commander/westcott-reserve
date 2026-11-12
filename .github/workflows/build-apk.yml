@@ -90,11 +90,6 @@ jobs:
       - name: Install Vercel CLI
         run: npm install --global vercel
 
-      - name: Stage APK for Website
-        run: |
-          mkdir -p public/downloads
-          cp "android/app/build/outputs/apk/release/Westcott Reserve.apk" public/downloads/westcott-reserve.apk
-
       - name: Configure Vercel Project
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -152,21 +147,30 @@ jobs:
 
           vercel pull --yes --environment=production --scope="$VERCEL_ORG_ID" --project="$VERCEL_PROJECT_ID" --token="$VERCEL_TOKEN"
 
-      - name: Build and Deploy Website with APK
+      - name: Build Website (Without APK)
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
-          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL || vars.EXPO_PUBLIC_SUPABASE_URL }}
-          EXPO_PUBLIC_SUPABASE_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_KEY || vars.EXPO_PUBLIC_SUPABASE_KEY }}
-          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY || vars.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
-          EXPO_PUBLIC_EAS_PROJECT_ID: ${{ secrets.EXPO_PUBLIC_EAS_PROJECT_ID }}
         run: |
           vercel build --prod --scope="$VERCEL_ORG_ID" --project="$VERCEL_PROJECT_ID" --token="$VERCEL_TOKEN"
+
+      - name: Inject APK into Vercel Build Output
+        run: |
+          mkdir -p .vercel/output/static/downloads
+          cp "android/app/build/outputs/apk/release/Westcott Reserve.apk" .vercel/output/static/downloads/westcott-reserve.apk
           test -s .vercel/output/static/downloads/westcott-reserve.apk
+
+      - name: Deploy Website with APK
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+        run: |
           vercel deploy --prebuilt --prod --scope="$VERCEL_ORG_ID" --project="$VERCEL_PROJECT_ID" --token="$VERCEL_TOKEN"
 
-      - name: Upload APK Artifact
+      - name: Upload APK Artifact to GitHub
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: Westcott Reserve APK
