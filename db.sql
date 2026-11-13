@@ -831,6 +831,142 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- Dedicated beneficiary records. These must not be represented by fake
+-- zero-value transactions because transaction RLS and transfer processing can
+-- legitimately reject or transform those rows.
+CREATE TABLE IF NOT EXISTS public.beneficiaries (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  username TEXT,
+  identifier TEXT NOT NULL,
+  account_number TEXT,
+  bank_name TEXT NOT NULL DEFAULT 'Westcott Reserve Bank',
+  is_westcott BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (user_id, bank_name, identifier)
+);
+
+ALTER TABLE public.beneficiaries ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.beneficiaries TO authenticated;
+DROP POLICY IF EXISTS "Users can view own beneficiaries" ON public.beneficiaries;
+CREATE POLICY "Users can view own beneficiaries"
+  ON public.beneficiaries FOR SELECT TO authenticated
+  USING (auth.uid() = user_id AND public.is_account_active());
+DROP POLICY IF EXISTS "Users can create own beneficiaries" ON public.beneficiaries;
+CREATE POLICY "Users can create own beneficiaries"
+  ON public.beneficiaries FOR INSERT TO authenticated
+  WITH CHECK (auth.uid() = user_id AND public.is_account_active());
+DROP POLICY IF EXISTS "Users can update own beneficiaries" ON public.beneficiaries;
+CREATE POLICY "Users can update own beneficiaries"
+  ON public.beneficiaries FOR UPDATE TO authenticated
+  USING (auth.uid() = user_id AND public.is_account_active())
+  WITH CHECK (auth.uid() = user_id AND public.is_account_active());
+DROP POLICY IF EXISTS "Users can delete own beneficiaries" ON public.beneficiaries;
+CREATE POLICY "Users can delete own beneficiaries"
+  ON public.beneficiaries FOR DELETE TO authenticated
+  USING (auth.uid() = user_id AND public.is_account_active());
+
+CREATE OR REPLACE FUNCTION public.touch_beneficiary_updated_at()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS beneficiaries_updated_at ON public.beneficiaries;
+CREATE TRIGGER beneficiaries_updated_at
+  BEFORE UPDATE ON public.beneficiaries
+  FOR EACH ROW
+  EXECUTE FUNCTION public.touch_beneficiary_updated_at();
+
+-- Preserve beneficiary rows created by the previous transaction-backed
+-- implementation when this migration is applied to an existing project.
+INSERT INTO public.beneficiaries (
+  user_id, name, username, identifier, account_number, bank_name, is_westcott
+)
+SELECT DISTINCT ON (t.user_id, COALESCE(t.bank_name, 'Westcott Reserve Bank'), t.counterparty)
+  t.user_id,
+  COALESCE(t.receiver_name, t.counterparty, t.account_number, 'Beneficiary'),
+  CASE
+    WHEN COALESCE(t.counterparty, '') LIKE '@%'
+    THEN ltrim(t.counterparty, '@')
+    ELSE NULL
+  END,
+  COALESCE(t.counterparty, t.account_number),
+  t.account_number,
+  COALESCE(t.bank_name, 'Westcott Reserve Bank'),
+  COALESCE(t.counterparty, '') LIKE '@%'
+FROM public.transactions AS t
+WHERE t.type = 'DEBIT'
+  AND COALESCE(t.counterparty, t.account_number, t.receiver_name) IS NOT NULL
+ORDER BY
+  t.user_id,
+  COALESCE(t.bank_name, 'Westcott Reserve Bank'),
+  t.counterparty,
+  t.created_at DESC
+ON CONFLICT (user_id, bank_name, identifier) DO NOTHING;
+
+UPDATE public.beneficiaries
+SET is_westcott = true
+WHERE identifier LIKE '@%'
+   OR COALESCE(username, '') <> ''
+   OR bank_name ILIKE '%westcott%';
+
+UPDATE public.beneficiaries
+SET username = lower(ltrim(identifier, '@'))
+WHERE username IS NULL
+  AND identifier LIKE '@%';
+
+UPDATE public.beneficiaries
+SET username = NULL
+WHERE identifier NOT LIKE '@%'
+  AND username = account_number;
+
+UPDATE public.beneficiaries AS b
+SET username = p.username,
+    identifier = '@' || p.username,
+    is_westcott = true
+FROM public.profiles AS p
+WHERE b.username IS NULL
+  AND b.account_number = p.account_number
+  AND b.bank_name ILIKE '%westcott%'
+  AND p.username IS NOT NULL;
+
+CREATE OR REPLACE FUNCTION public.normalize_beneficiary_username()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF NEW.identifier NOT LIKE '@%' THEN
+    NEW.username = NULL;
+  ELSE
+    NEW.username = lower(ltrim(NEW.identifier, '@'));
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS normalize_beneficiary_username ON public.beneficiaries;
+CREATE TRIGGER normalize_beneficiary_username
+  BEFORE INSERT OR UPDATE ON public.beneficiaries
+  FOR EACH ROW
+  EXECUTE FUNCTION public.normalize_beneficiary_username();
+
+UPDATE public.beneficiaries
+SET is_westcott = false
+WHERE identifier NOT LIKE '@%'
+  AND COALESCE(username, '') = ''
+  AND bank_name NOT ILIKE '%westcott%';
+
 -- Server-driven presentation settings. Only prebuilt app components/actions are
 -- configurable; this table never contains executable code.
 CREATE TABLE IF NOT EXISTS public.app_ui_config (
@@ -1383,6 +1519,26 @@ CREATE TABLE IF NOT EXISTS public.support_chat_messages (
   message TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE OR REPLACE FUNCTION public.touch_support_chat_session()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  UPDATE public.support_chat_sessions
+  SET updated_at = now()
+  WHERE id = NEW.session_id;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS support_chat_message_updates_session ON public.support_chat_messages;
+CREATE TRIGGER support_chat_message_updates_session
+  AFTER INSERT ON public.support_chat_messages
+  FOR EACH ROW
+  EXECUTE FUNCTION public.touch_support_chat_session();
 
 -- 3. Enable Row Level Security (RLS)
 ALTER TABLE public.support_chat_sessions ENABLE ROW LEVEL SECURITY;

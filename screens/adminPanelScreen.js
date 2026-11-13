@@ -566,12 +566,60 @@ export default function AdminPanelScreen() {
             filter: `session_id=eq.${activeSessionId}` 
           }, (payload) => {
             setActiveChatMessages((current) => [...current, payload.new]);
-        }).subscribe();
+        })
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'support_chat_sessions',
+            filter: `id=eq.${activeSessionId}`,
+          },
+          (payload) => {
+            setChatSessions((current) =>
+              current.map((chat) => (chat.id === payload.new.id ? { ...chat, ...payload.new } : chat))
+            );
+          }
+        )
+        .subscribe();
     };
 
     loadThread();
     return () => { if (channel) supabase.removeChannel(channel); };
   }, [activeSessionId]);
+
+  useEffect(() => {
+    if (!authorized) return undefined;
+
+    const channel = supabase
+      .channel('admin-support-chat-sessions')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'support_chat_sessions' },
+        (payload) => {
+          setChatSessions((current) => {
+            if (current.some((chat) => chat.id === payload.new.id)) return current;
+            return [payload.new, ...current];
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'support_chat_sessions' },
+        (payload) => {
+          setChatSessions((current) =>
+            current
+              .map((chat) => (chat.id === payload.new.id ? { ...chat, ...payload.new } : chat))
+              .sort((left, right) => new Date(right.updated_at) - new Date(left.updated_at))
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [authorized]);
 
   const signIn = async () => {
     setBusy(true);

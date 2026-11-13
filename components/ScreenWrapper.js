@@ -4,7 +4,7 @@ import { View, StyleSheet, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppTheme } from '../hooks/useAppTheme';
 
-const ScreenWrapper = ({ children, style, noPadding = false }) => {
+const ScreenWrapper = ({ children, style, noPadding = false, edges }) => {
   const { theme, isDark } = useAppTheme();
 
   return (
@@ -15,7 +15,7 @@ const ScreenWrapper = ({ children, style, noPadding = false }) => {
         style,
       ]}
       // Included 'bottom' to prevent Android/iOS nav bar overlap
-      edges={['top', 'bottom', 'left', 'right']}
+      edges={edges || ['top', 'bottom', 'left', 'right']}
     >
       <StatusBar
         barStyle={isDark ? 'light-content' : 'dark-content'}

@@ -9,15 +9,21 @@ import {
   Alert, 
   ActivityIndicator,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  Keyboard,
+  Animated,
+  useWindowDimensions
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ScreenWrapper from '../components/ScreenWrapper';
 import { useAppTheme } from '../hooks/useAppTheme';
 import { supabase } from '../services/supabaseClient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const LiveSupportChatScreen = ({ navigation }) => {
   const { theme } = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   
   // View State: 'history' | 'chat'
   const [view, setView] = useState('history');
@@ -28,8 +34,42 @@ const LiveSupportChatScreen = ({ navigation }) => {
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(true);
-  
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [rootHeight, setRootHeight] = useState(0);
+  const [fullRootHeight, setFullRootHeight] = useState(0);
+
   const scrollViewRef = useRef();
+  const keyboardAnimation = useRef(new Animated.Value(0)).current;
+  const keyboardInset = Math.max(
+    0,
+    keyboardHeight + insets.bottom - Math.max(0, fullRootHeight - rootHeight)
+  );
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillChangeFrame' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSubscription = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardHeight(event.endCoordinates?.height || 0);
+      setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 50);
+    });
+    const hideSubscription = Keyboard.addListener(hideEvent, (event) => {
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, [keyboardAnimation, windowHeight]);
+
+  useEffect(() => {
+    Animated.timing(keyboardAnimation, {
+      toValue: -keyboardInset,
+      duration: 180,
+      useNativeDriver: false,
+    }).start();
+  }, [keyboardAnimation, keyboardInset]);
 
   const statusLabel = useMemo(() => {
     if (!session) return 'Connecting...';
@@ -107,6 +147,18 @@ const LiveSupportChatScreen = ({ navigation }) => {
           (payload) => {
             setMessages((current) => [...current, payload.new]);
             setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'support_chat_sessions',
+            filter: `id=eq.${session.id}`,
+          },
+          (payload) => {
+            setSession((current) => (current ? { ...current, ...payload.new } : current));
           }
         )
         .subscribe();
@@ -196,7 +248,7 @@ const LiveSupportChatScreen = ({ navigation }) => {
   // --- RENDER HISTORY LIST ---
   if (view === 'history') {
     return (
-      <ScreenWrapper>
+      <ScreenWrapper edges={['top', 'left', 'right']}>
         <View style={styles.topBar}>
           <TouchableOpacity style={[styles.backCircle, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]} onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={20} color={theme.textPrimary} />
@@ -250,10 +302,15 @@ const LiveSupportChatScreen = ({ navigation }) => {
 
   // --- RENDER ACTIVE CHAT ---
   return (
-    <ScreenWrapper>
-      <KeyboardAvoidingView 
-        style={styles.container} 
+    <ScreenWrapper edges={['top', 'left', 'right']}>
+      <KeyboardAvoidingView
+        style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        onLayout={(event) => {
+          const height = event.nativeEvent.layout.height;
+          setRootHeight(height);
+          setFullRootHeight((current) => Math.max(current, height));
+        }}
       >
         <View style={styles.topBar}>
           <TouchableOpacity style={[styles.backCircle, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]} onPress={() => setView('history')}>
@@ -276,10 +333,11 @@ const LiveSupportChatScreen = ({ navigation }) => {
         {loading ? (
           <View style={styles.centerContainer}><ActivityIndicator size="large" color={theme.accent} /></View>
         ) : (
-          <ScrollView 
-            style={styles.chat} 
-            contentContainerStyle={styles.chatContent} 
+          <ScrollView
+            style={[styles.chat, { paddingBottom: keyboardInset ? 8 : 0 }]}
+            contentContainerStyle={[styles.chatContent, { paddingBottom: keyboardInset ? 92 : 24 }]}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
             ref={scrollViewRef}
             onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
           >
@@ -299,7 +357,16 @@ const LiveSupportChatScreen = ({ navigation }) => {
           </ScrollView>
         )}
 
-        <View style={[styles.inputBar, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}> 
+        <Animated.View
+          style={[
+            styles.inputBar,
+            {
+              backgroundColor: theme.cardBg,
+              borderColor: theme.cardBorder,
+              transform: [{ translateY: keyboardAnimation }],
+            },
+          ]}
+        >
           <TextInput
             value={draft}
             onChangeText={setDraft}
@@ -308,6 +375,7 @@ const LiveSupportChatScreen = ({ navigation }) => {
             style={[styles.input, { color: theme.textPrimary }]}
             multiline
             editable={session?.status !== 'closed' && !loading}
+            onFocus={() => setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100)}
           />
           <TouchableOpacity 
             style={[styles.sendBtn, { backgroundColor: (!draft.trim() || session?.status === 'closed') ? theme.cardBorder : theme.accent }]} 
@@ -316,7 +384,7 @@ const LiveSupportChatScreen = ({ navigation }) => {
           >
             <Ionicons name="send" size={16} color="#FFFFFF" />
           </TouchableOpacity>
-        </View>
+        </Animated.View>
       </KeyboardAvoidingView>
     </ScreenWrapper>
   );
@@ -353,7 +421,7 @@ const styles = StyleSheet.create({
   statusBar: { marginHorizontal: 16, borderRadius: 14, borderWidth: 1, flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, paddingHorizontal: 10, marginBottom: 8 },
   statusItem: { flex: 1, alignItems: 'center' },
   statusText: { fontSize: 12, fontWeight: '700' },
-  chat: { flex: 1 },
+  chat: { flex: 1, minHeight: 0 },
   chatContent: { padding: 16, gap: 12 },
   messageRow: { flexDirection: 'row', justifyContent: 'flex-start' },
   userRow: { justifyContent: 'flex-end' },

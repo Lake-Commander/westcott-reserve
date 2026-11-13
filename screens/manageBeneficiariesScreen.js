@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useSelector } from 'react-redux';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import ScreenWrapper from '../components/ScreenWrapper';
 import { useAppTheme } from '../hooks/useAppTheme';
@@ -33,10 +34,6 @@ const ManageBeneficiariesScreen = ({ navigation, route }) => {
     }
   }, [lockTab]);
 
-  useEffect(() => {
-    loadBeneficiaries();
-  }, [currentUser?.id]);
-
   const loadBeneficiaries = async () => {
     setLoading(true);
     const data = await BankService.getTransferredBeneficiaries(currentUser?.id);
@@ -44,48 +41,73 @@ const ManageBeneficiariesScreen = ({ navigation, route }) => {
     setLoading(false);
   };
 
+  useFocusEffect(
+    React.useCallback(() => {
+      loadBeneficiaries();
+    }, [currentUser?.id])
+  );
+
   const currentTabItems = beneficiaries.filter((b) =>
     activeTab === 'westcott' ? b.isWestcott : !b.isWestcott
   );
 
   const filteredList = currentTabItems.filter(
     (item) =>
-      item.name.toLowerCase().includes(search.toLowerCase()) ||
-      item.identifier.toLowerCase().includes(search.toLowerCase())
+      String(item.name || '').toLowerCase().includes(search.toLowerCase()) ||
+      String(item.identifier || '').toLowerCase().includes(search.toLowerCase())
   );
 
   const handleSelectBeneficiary = (item) => {
-    const accNum = item.accountNumber || '';
-    const uname = item.username || '';
+    const accNum = item.accountNumber || (
+      !item.isUsernameBeneficiary ? item.identifier : ''
+    );
+    const uname = item.username || (
+      String(item.identifier || '').startsWith('@')
+        ? String(item.identifier).replace(/^@/, '')
+        : ''
+    );
+    const bank = item.bank || item.bankName || 'Westcott Reserve Bank';
+    const beneficiary = {
+      name: item.name || '',
+      username: uname,
+      accountNumber: accNum,
+      bank,
+      isWestcott: Boolean(item.isWestcott),
+    };
 
     if (returnTarget === 'transferBank') {
-      navigation.navigate({
-        name: 'transferBank',
-        params: {
-          recipientAccount: accNum,
-          recipientBank: item.bank,
-          recipientName: item.name,
-        },
-        merge: true,
+      navigation.navigate('transferBank', {
+        beneficiary,
+        recipientAccount: accNum,
+        recipientBank: bank,
+        recipientName: beneficiary.name,
       });
     } else if (returnTarget === 'transferUsername') {
-      navigation.navigate({
-        name: 'transferUsername',
-        params: {
-          recipientUsername: uname,
-        },
-        merge: true,
+      if (!item.isUsernameBeneficiary || !uname) {
+        navigation.navigate('transferBank', {
+          beneficiary,
+          recipientAccount: accNum,
+          recipientBank: bank,
+          recipientName: beneficiary.name,
+        });
+        return;
+      }
+      navigation.navigate('transferUsername', {
+        beneficiary,
+        recipientUsername: uname,
       });
     } else {
-      if (item.isWestcott || item.identifier?.startsWith('@')) {
+      if (item.isUsernameBeneficiary) {
         navigation.navigate('transferUsername', {
+          beneficiary,
           recipientUsername: uname,
         });
       } else {
         navigation.navigate('transferBank', {
+          beneficiary,
           recipientAccount: accNum,
-          recipientBank: item.bank,
-          recipientName: item.name,
+          recipientBank: bank,
+          recipientName: beneficiary.name,
         });
       }
     }

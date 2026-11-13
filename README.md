@@ -339,6 +339,12 @@ Admin mutations are restricted to database functions and recorded in
 feed. Brevo delivery is handled by the server-only
 `/api/admin/send-email` function and requires the server variables above.
 
+Live Support Chat is available from the app home screen and the admin
+console's **Live Chat** section. Messages and chat status are synchronized
+through Supabase Realtime; the chat migration also updates a session's
+`updated_at` timestamp whenever a new message is sent so active threads move
+to the top of the admin inbox.
+
 The **App appearance** section publishes a constrained server-driven
 configuration for the home welcome/promotion cards, quick actions, brand accent
 and background/card colors, and the sample bank list. The mobile app renders
@@ -360,6 +366,12 @@ the [country-by-country SWIFT/BIC JSON directory](https://github.com/smowtion/sw
 opens an external dataset for reference; it is not an integrated or verified
 payment-routing service. Transfers remain simulated and no real bank network is
 connected.
+
+Beneficiaries use the `public.beneficiaries` table added in `db.sql`. Apply the
+beneficiary migration section to an existing Supabase project before saving or
+loading new beneficiaries. It also backfills records from the earlier
+transaction-backed implementation. The app retains a read fallback for older
+projects, but new saves require the dedicated table.
 
 ## Security and configuration notes
 

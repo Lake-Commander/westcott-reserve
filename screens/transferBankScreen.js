@@ -37,21 +37,34 @@ const TransferBankScreen = ({ navigation, route }) => {
   const [mpinPromptVisible, setMpinPromptVisible] = useState(false);
 
   useEffect(() => {
-    if (route?.params?.recipientAccount || route?.params?.recipientBank || route?.params?.recipientName) {
-      if (route.params.recipientAccount) {
-        setAccountNumber(route.params.recipientAccount);
+    const params = route?.params || {};
+    const beneficiary = params.beneficiary || {};
+    const recipientAccount = params.recipientAccount || params.accountNumber || beneficiary.accountNumber;
+    const recipientBank = params.recipientBank || params.bankName || beneficiary.bank;
+    const recipientName = params.recipientName || beneficiary.name;
+
+    if (recipientAccount || recipientBank || recipientName) {
+      if (recipientAccount) {
+        setAccountNumber(String(recipientAccount));
       }
-      if (route.params.recipientBank) {
-        setSelectedBank(route.params.recipientBank);
+      if (recipientBank) {
+        setSelectedBank(String(recipientBank));
       }
-      if (route.params.recipientName) {
-        setResolvedName(route.params.recipientName.toUpperCase());
+      if (recipientName) {
+        setResolvedName(String(recipientName).toUpperCase());
         setVerifyStatus('verified');
       }
-      
-      navigation.setParams({ recipientAccount: undefined, recipientBank: undefined, recipientName: undefined });
+
+      navigation.setParams({
+        beneficiary: undefined,
+        recipientAccount: undefined,
+        recipientBank: undefined,
+        recipientName: undefined,
+        accountNumber: undefined,
+        bankName: undefined,
+      });
     }
-  }, [route?.params?.recipientAccount, route?.params?.recipientBank, route?.params?.recipientName, navigation]);
+  }, [route?.params, navigation]);
 
   const currentBalance = parseFloat(currentUser?.balance ?? '0') || 0;
   const formatCurrency = (value) => new Intl.NumberFormat('en-US', {
@@ -141,6 +154,7 @@ const TransferBankScreen = ({ navigation, route }) => {
         senderId: currentUser.id,
         receiverAccount: accountNumber.trim(),
         receiverName: recipientLabel,
+        receiverUsername: null,
         bankName: selectedBank || 'Westcott Reserve Bank',
         amount: numAmt,
         note: transferNote,

@@ -33,17 +33,32 @@ const TransferUsernameScreen = ({ navigation, route }) => {
   const [mpinPromptVisible, setMpinPromptVisible] = useState(false);
 
   useEffect(() => {
-    if (route?.params?.recipientUsername) {
-      const targetUsername = route.params.recipientUsername.replace(/^@/, '').replace(/\s+/g, '').toLowerCase();
+    const params = route?.params || {};
+    const beneficiary = params.beneficiary || {};
+    const recipientUsername =
+      params.recipientUsername ||
+      params.username ||
+      beneficiary.username ||
+      (String(beneficiary.identifier || '').startsWith('@')
+        ? beneficiary.identifier
+        : '') ||
+      (String(params.identifier || '').startsWith('@') ? params.identifier : '');
+
+    if (recipientUsername) {
+      const targetUsername = String(recipientUsername).replace(/^@/, '').replace(/\s+/g, '').toLowerCase();
       
       if (targetUsername) {
         setUsername(targetUsername);
         resolveUsername(targetUsername);
       }
       
-      navigation.setParams({ recipientUsername: undefined });
+      navigation.setParams({
+        beneficiary: undefined,
+        recipientUsername: undefined,
+        identifier: undefined,
+      });
     }
-  }, [route?.params?.recipientUsername, navigation]);
+  }, [route?.params, navigation]);
 
   const resolveUsername = async (uname) => {
     const clean = uname.trim().replace(/^@/, '');
@@ -125,6 +140,7 @@ const TransferUsernameScreen = ({ navigation, route }) => {
         senderId: currentUser.id,
         receiverAccount: targetUser.accountNumber || targetUser.id,
         receiverName: targetUser.name,
+        receiverUsername: targetUser.username || cleanUsername,
         bankName: 'Westcott Reserve Bank',
         amount: numAmt,
         note: 'Username Transfer',
@@ -135,6 +151,7 @@ const TransferUsernameScreen = ({ navigation, route }) => {
       if (saveRecipient) {
         await BankService.saveBeneficiary(currentUser?.id, {
           name: targetUser.name,
+          username: targetUser.username || cleanUsername,
           identifier: `@${(targetUser.username || cleanUsername).replace(/^@/, '')}`,
           bank: 'Westcott Reserve Bank',
           isWestcott: true,
