@@ -221,7 +221,7 @@ const LiveSupportChatScreen = ({ navigation }) => {
   // --- RENDER HISTORY LIST ---
   if (view === 'history') {
     return (
-      <ScreenWrapper edges={['top', 'left', 'right']}>
+      <ScreenWrapper edges={['top', 'bottom', 'left', 'right']}>
         <View style={styles.topBar}>
           <TouchableOpacity style={[styles.backCircle, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]} onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={20} color={theme.textPrimary} />
@@ -275,7 +275,7 @@ const LiveSupportChatScreen = ({ navigation }) => {
 
   // --- RENDER ACTIVE CHAT ---
   return (
-    <ScreenWrapper edges={['top', 'left', 'right']}>
+    <ScreenWrapper edges={['top', 'bottom', 'left', 'right']}>
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
