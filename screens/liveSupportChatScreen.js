@@ -10,20 +10,15 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Keyboard,
-  Animated,
-  useWindowDimensions
+  Keyboard
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ScreenWrapper from '../components/ScreenWrapper';
 import { useAppTheme } from '../hooks/useAppTheme';
 import { supabase } from '../services/supabaseClient';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const LiveSupportChatScreen = ({ navigation }) => {
   const { theme } = useAppTheme();
-  const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
   
   // View State: 'history' | 'chat'
   const [view, setView] = useState('history');
@@ -34,42 +29,20 @@ const LiveSupportChatScreen = ({ navigation }) => {
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(true);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const [rootHeight, setRootHeight] = useState(0);
-  const [fullRootHeight, setFullRootHeight] = useState(0);
 
   const scrollViewRef = useRef();
-  const keyboardAnimation = useRef(new Animated.Value(0)).current;
-  const keyboardInset = Math.max(
-    0,
-    keyboardHeight + insets.bottom - Math.max(0, fullRootHeight - rootHeight)
-  );
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillChangeFrame' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
 
     const showSubscription = Keyboard.addListener(showEvent, (event) => {
-      setKeyboardHeight(event.endCoordinates?.height || 0);
       setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 50);
-    });
-    const hideSubscription = Keyboard.addListener(hideEvent, (event) => {
-      setKeyboardHeight(0);
     });
 
     return () => {
       showSubscription.remove();
-      hideSubscription.remove();
     };
-  }, [keyboardAnimation, windowHeight]);
-
-  useEffect(() => {
-    Animated.timing(keyboardAnimation, {
-      toValue: -keyboardInset,
-      duration: 180,
-      useNativeDriver: false,
-    }).start();
-  }, [keyboardAnimation, keyboardInset]);
+  }, []);
 
   const statusLabel = useMemo(() => {
     if (!session) return 'Connecting...';
@@ -305,12 +278,8 @@ const LiveSupportChatScreen = ({ navigation }) => {
     <ScreenWrapper edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView
         style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        onLayout={(event) => {
-          const height = event.nativeEvent.layout.height;
-          setRootHeight(height);
-          setFullRootHeight((current) => Math.max(current, height));
-        }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
       >
         <View style={styles.topBar}>
           <TouchableOpacity style={[styles.backCircle, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]} onPress={() => setView('history')}>
@@ -334,8 +303,8 @@ const LiveSupportChatScreen = ({ navigation }) => {
           <View style={styles.centerContainer}><ActivityIndicator size="large" color={theme.accent} /></View>
         ) : (
           <ScrollView
-            style={[styles.chat, { paddingBottom: keyboardInset ? 8 : 0 }]}
-            contentContainerStyle={[styles.chatContent, { paddingBottom: keyboardInset ? 92 : 24 }]}
+            style={styles.chat}
+            contentContainerStyle={styles.chatContent}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             ref={scrollViewRef}
@@ -357,13 +326,12 @@ const LiveSupportChatScreen = ({ navigation }) => {
           </ScrollView>
         )}
 
-        <Animated.View
+        <View
           style={[
             styles.inputBar,
             {
               backgroundColor: theme.cardBg,
               borderColor: theme.cardBorder,
-              transform: [{ translateY: keyboardAnimation }],
             },
           ]}
         >
@@ -384,7 +352,7 @@ const LiveSupportChatScreen = ({ navigation }) => {
           >
             <Ionicons name="send" size={16} color="#FFFFFF" />
           </TouchableOpacity>
-        </Animated.View>
+        </View>
       </KeyboardAvoidingView>
     </ScreenWrapper>
   );
