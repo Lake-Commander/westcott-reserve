@@ -74,7 +74,11 @@ async function sendPushNotifications(audienceUserId, title, message) {
   });
   if (error) throw error;
 
-  const tokens = [...new Set((tokenRows || []).map((row) => row.expo_push_token))];
+  const tokens = [...new Set(
+    (tokenRows || [])
+      .map((row) => row.expo_push_token)
+      .filter((token) => typeof token === 'string' && token.startsWith('ExponentPushToken['))
+  )];
   if (tokens.length === 0) return 0;
 
   for (let index = 0; index < tokens.length; index += 100) {
@@ -107,10 +111,6 @@ async function sendPushNotifications(audienceUserId, title, message) {
     if (!Array.isArray(result.data) || result.data.length !== messages.length) {
       throw new Error('Push service did not confirm every notification request.');
     }
-    if (result.errors?.length) {
-      throw new Error(result.errors[0].message || 'The push service rejected the notification batch.');
-    }
-
     const failedTicket = result.data?.find((ticket) => ticket.status === 'error');
     if (failedTicket) {
       throw new Error(failedTicket.message || 'The push service rejected a notification.');
@@ -495,7 +495,7 @@ export default function AdminPanelScreen() {
           .limit(150),
         supabase
           .from('support_chat_sessions')
-          .select('*, profiles(email)')
+          .select('id,user_id,status,created_at,updated_at')
           .order('created_at', { ascending: false })
           .limit(100),
         supabase
@@ -533,7 +533,11 @@ export default function AdminPanelScreen() {
     setProfiles(profileResult.data || []);
     setTransferRestrictedIds((transferRestrictionResult.data || []).map((row) => row.user_id));
     setTransactions(transactionResult.data || []);
-    setChatSessions(chatSessionResult.data || []);
+    const profileMap = new Map((profileResult.data || []).map((profile) => [profile.id, profile]));
+    setChatSessions((chatSessionResult.data || []).map((chat) => ({
+      ...chat,
+      profile: profileMap.get(chat.user_id) || null,
+    })));
     setSupportMessages(customerCareResult.data || []);
     setFeatures(featureResult.data || []);
     setAuditEvents(auditResult.data || []);
@@ -572,16 +576,18 @@ export default function AdminPanelScreen() {
   useEffect(() => {
     if (!authorized) return undefined;
     const channel = supabase
-      .channel('admin-notification-feed')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'admin_notifications' }, (payload) => {
-        const notification = payload.new;
-        setFeedback(`${notification.title}: ${notification.message}`);
-        if (
-          typeof window !== 'undefined' &&
-          'Notification' in window &&
-          window.Notification.permission === 'granted'
-        ) {
-          new window.Notification(notification.title, { body: notification.message });
+      .channel('admin-event-feed')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'support_chat_messages',
+        filter: 'sender_role=eq.user',
+      }, async (payload) => {
+        const chat = chatSessions.find((item) => item.id === payload.new.session_id);
+        const sender = chat?.profile?.name || chat?.profile?.email || 'A customer';
+        setFeedback(`${sender} sent a live support message.`);
+        if (typeof window !== 'undefined' && 'Notification' in window && window.Notification.permission === 'granted') {
+          new window.Notification(`Message from ${sender}`, { body: payload.new.message });
         }
       })
       .subscribe();
@@ -592,7 +598,7 @@ export default function AdminPanelScreen() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [authorized]);
+  }, [authorized, chatSessions]);
 
   useEffect(() => {
     if (!activeSessionId) return;
@@ -1390,9 +1396,13 @@ export default function AdminPanelScreen() {
                   <FundAccountPanel
                     profile={profile}
                     disabled={busy}
-                    onFunded={() => {
+                    onFunded={async () => {
                       setSelectedFundAccountId(null);
-                      loadData();
+                      try {
+                        await loadData();
+                      } catch (error) {
+                        setLoadError(error.message || 'Deposit completed, but the account list could not refresh.');
+                      }
                       setFeedback('Funds successfully added to the account.');
                     }}
                   />
@@ -1443,7 +1453,10 @@ export default function AdminPanelScreen() {
           <>
             <Text style={styles.sectionTitle}>Live Support Chats</Text>
             {chatSessions.map((chat) => (
-              <Card key={chat.id} title={chat.profiles?.email || 'Unknown User'}>
+              <Card
+                key={chat.id}
+                title={chat.profile?.name || chat.profile?.email || `Customer ${chat.user_id.slice(0, 8)}`}
+              >
                 <Text style={styles.mutedText}>
                   Status: {chat.status} · Started: {formatDate(chat.created_at)}
                 </Text>
