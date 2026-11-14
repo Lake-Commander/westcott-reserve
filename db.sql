@@ -567,6 +567,49 @@ CREATE POLICY "Users can read notifications for their account"
     public.is_account_active() AND
     (audience_user_id IS NULL OR audience_user_id = auth.uid())
   );
+DROP POLICY IF EXISTS "Admins can read notifications" ON public.admin_notifications;
+CREATE POLICY "Admins can read notifications"
+  ON public.admin_notifications FOR SELECT TO authenticated
+  USING (public.is_admin());
+CREATE TABLE IF NOT EXISTS public.notification_states (
+  notification_id UUID NOT NULL REFERENCES public.admin_notifications(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  read_at TIMESTAMPTZ,
+  dismissed_at TIMESTAMPTZ,
+  PRIMARY KEY (notification_id, user_id)
+);
+ALTER TABLE public.notification_states ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.notification_states TO authenticated;
+DROP POLICY IF EXISTS "Users manage own notification states" ON public.notification_states;
+CREATE POLICY "Users manage own notification states"
+  ON public.notification_states FOR ALL TO authenticated
+  USING (auth.uid() = user_id AND public.is_account_active())
+  WITH CHECK (auth.uid() = user_id AND public.is_account_active());
+DROP POLICY IF EXISTS "Admins can read notification states" ON public.notification_states;
+CREATE POLICY "Admins can read notification states"
+  ON public.notification_states FOR SELECT TO authenticated
+  USING (public.is_admin());
+
+CREATE OR REPLACE FUNCTION public.create_event_notification(
+  p_user_id UUID,
+  p_title TEXT,
+  p_message TEXT
+)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE notification_id UUID;
+BEGIN
+  INSERT INTO public.admin_notifications (audience_user_id, title, message)
+  VALUES (p_user_id, p_title, p_message)
+  RETURNING id INTO notification_id;
+  RETURN notification_id;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.create_event_notification(UUID, TEXT, TEXT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.create_event_notification(UUID, TEXT, TEXT) TO service_role;
 REVOKE INSERT, UPDATE, DELETE ON public.admin_notifications FROM anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.notify_user_of_transaction()
@@ -598,9 +641,11 @@ BEGIN
     NEW.user_id,
     notification_title,
     format(
-      'A transaction of %s %s was recorded. Open History to review the details.',
+      '%s of %s %s was recorded for %s. Open History to review the details.',
+      CASE WHEN NEW.type = 'CREDIT' THEN 'A deposit' ELSE 'A transfer' END,
       COALESCE(transaction_currency, 'USD'),
-      to_char(NEW.amount, 'FM999,999,999,990.00')
+      to_char(NEW.amount, 'FM999,999,999,990.00'),
+      COALESCE(NEW.receiver_name, NEW.counterparty, 'your account')
     )
   );
 
@@ -812,7 +857,13 @@ REVOKE ALL ON FUNCTION public.admin_create_notification(TEXT, TEXT, UUID) FROM P
 GRANT EXECUTE ON FUNCTION public.admin_create_notification(TEXT, TEXT, UUID) TO authenticated;
 
 --ADMIN ADD BALANCE CONTROL
-CREATE OR REPLACE FUNCTION admin_add_funds(p_user_id UUID, p_amount NUMERIC)
+DROP FUNCTION IF EXISTS public.admin_add_funds(UUID, NUMERIC);
+CREATE OR REPLACE FUNCTION public.admin_add_funds(
+  p_user_id UUID,
+  p_amount NUMERIC,
+  p_sender_name TEXT DEFAULT 'Northstar Clearing Bank',
+  p_sender_account TEXT DEFAULT 'NSCB-104829'
+)
 RETURNS void AS $$
 BEGIN
   -- Verify the caller is an admin
@@ -826,10 +877,28 @@ BEGIN
   WHERE id = p_user_id;
 
   -- Log it as a transaction so it appears in their app history
-  INSERT INTO public.transactions (user_id, type, amount, counterparty, review_status)
-  VALUES (p_user_id, 'credit', p_amount, 'System Admin Deposit', 'normal');
+  INSERT INTO public.transactions (
+    user_id, type, amount, counterparty, receiver_name, account_number,
+    bank_name, category, note, review_status
+  )
+  VALUES (
+    p_user_id, 'CREDIT', p_amount, p_sender_name, p_sender_name,
+    p_sender_account, p_sender_name, 'Deposit',
+    'Deposit from ' || p_sender_name, 'normal'
+  );
+
+  PERFORM public.create_event_notification(
+    p_user_id,
+    'Deposit received',
+    format('%s %s was deposited from %s.', p_amount, COALESCE(
+      (SELECT currency FROM public.profiles WHERE id = p_user_id), 'USD'
+    ), p_sender_name)
+  );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public, pg_temp;
+REVOKE ALL ON FUNCTION admin_add_funds(UUID, NUMERIC, TEXT, TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION admin_add_funds(UUID, NUMERIC, TEXT, TEXT) TO authenticated;
 
 -- Dedicated beneficiary records. These must not be represented by fake
 -- zero-value transactions because transaction RLS and transfer processing can
@@ -1539,6 +1608,33 @@ CREATE TRIGGER support_chat_message_updates_session
   AFTER INSERT ON public.support_chat_messages
   FOR EACH ROW
   EXECUTE FUNCTION public.touch_support_chat_session();
+
+CREATE OR REPLACE FUNCTION public.notify_user_of_admin_chat_reply()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE target_user UUID;
+BEGIN
+  IF NEW.sender_role <> 'admin' THEN
+    RETURN NEW;
+  END IF;
+  SELECT user_id INTO target_user FROM public.support_chat_sessions WHERE id = NEW.session_id;
+  IF target_user IS NOT NULL THEN
+    PERFORM public.create_event_notification(
+      target_user,
+      'Support replied',
+      left(NEW.message, 500)
+    );
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS notify_user_of_admin_chat_reply ON public.support_chat_messages;
+CREATE TRIGGER notify_user_of_admin_chat_reply
+  AFTER INSERT ON public.support_chat_messages
+  FOR EACH ROW EXECUTE FUNCTION public.notify_user_of_admin_chat_reply();
 
 -- 3. Enable Row Level Security (RLS)
 ALTER TABLE public.support_chat_sessions ENABLE ROW LEVEL SECURITY;

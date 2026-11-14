@@ -14,10 +14,14 @@ not a bank, and it does not conduct real financial transactions.
 - Per-account balance visibility, in-app/push notification preferences, and
   device sign-in history.
 - Transaction records generate account-specific in-app inbox notifications.
-  Transaction-event push delivery is not configured; push remains available for
-  admin-published announcements sent to opted-in devices.
+  The inbox supports unread indicators, read state, and per-account clearing.
+  Foreground mobile event alerts are shown locally; background push delivery
+  still requires the configured Expo push service/server worker.
 - Admin tools for account suspension, audited indicative currency conversion,
-  and notifications to opted-in push devices.
+  notifications to opted-in push devices, and browser notifications while the
+  admin panel is open.
+- Admin deposits record a selected predetermined sender bank and account in the
+  transaction metadata instead of appearing as an anonymous system credit.
 - Home, cards, history, profile, transfers, bill payment, savings, and account
   settings screens.
 - Bank transfer picker with United States and European demo banks, plus a link

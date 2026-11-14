@@ -66,3 +66,11 @@ export async function unregisterPushNotifications(userId) {
     .eq('user_id', userId);
   if (error) throw error;
 }
+
+export async function showLocalNotification(title, body) {
+  if (Platform.OS === 'web') return;
+  await Notifications.scheduleNotificationAsync({
+    content: { title, body, sound: 'default' },
+    trigger: null,
+  });
+}

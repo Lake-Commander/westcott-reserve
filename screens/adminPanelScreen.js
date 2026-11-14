@@ -171,7 +171,15 @@ function Field({
 }
 
 function FundAccountPanel({ profile, disabled, onFunded }) {
+  const fundingSources = [
+    { name: 'Northstar Clearing Bank', account: 'NSCB-104829' },
+    { name: 'Meridian Commercial Bank', account: 'MCB-778201' },
+    { name: 'Atlas Federal Reserve', account: 'AFR-492610' },
+    { name: 'Harborline Trust Bank', account: 'HTB-305184' },
+    { name: 'Pioneer International Bank', account: 'PIB-861973' },
+  ];
   const [amount, setAmount] = useState('');
+  const [sourceIndex, setSourceIndex] = useState(0);
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -199,7 +207,9 @@ function FundAccountPanel({ profile, disabled, onFunded }) {
     try {
       const { error } = await supabase.rpc('admin_add_funds', {
         p_user_id: profile.id,
-        p_amount: numAmount
+        p_amount: numAmount,
+        p_sender_name: fundingSources[sourceIndex].name,
+        p_sender_account: fundingSources[sourceIndex].account,
       });
       if (error) throw error;
       setAmount('');
@@ -224,6 +234,19 @@ function FundAccountPanel({ profile, disabled, onFunded }) {
         placeholder="e.g. 500.00"
         editable={!busy}
       />
+      <Text style={styles.fieldLabel}>Deposit source</Text>
+      <View style={styles.sourceList}>
+        {fundingSources.map((source, index) => (
+          <TouchableOpacity
+            key={source.account}
+            onPress={() => setSourceIndex(index)}
+            style={[styles.sourceOption, sourceIndex === index && styles.sourceOptionActive]}
+          >
+            <Text style={styles.sourceOptionName}>{source.name}</Text>
+            <Text style={styles.sourceOptionAccount}>{source.account}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
       <View style={styles.stateButtons}>
         <Button
           title={busy ? 'Depositing...' : 'Confirm Deposit'}
@@ -467,7 +490,7 @@ export default function AdminPanelScreen() {
         supabase.rpc('admin_list_profiles'),
         supabase
           .from('transactions')
-          .select('id,user_id,type,amount,counterparty,created_at,review_status')
+          .select('id,user_id,type,amount,counterparty,receiver_name,account_number,bank_name,created_at,review_status')
           .order('created_at', { ascending: false })
           .limit(150),
         supabase
@@ -545,6 +568,31 @@ export default function AdminPanelScreen() {
 
     return () => clearInterval(intervalId);
   }, [authorized, loadData]);
+
+  useEffect(() => {
+    if (!authorized) return undefined;
+    const channel = supabase
+      .channel('admin-notification-feed')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'admin_notifications' }, (payload) => {
+        const notification = payload.new;
+        setFeedback(`${notification.title}: ${notification.message}`);
+        if (
+          typeof window !== 'undefined' &&
+          'Notification' in window &&
+          window.Notification.permission === 'granted'
+        ) {
+          new window.Notification(notification.title, { body: notification.message });
+        }
+      })
+      .subscribe();
+
+    if (typeof window !== 'undefined' && 'Notification' in window && window.Notification.permission === 'default') {
+      window.Notification.requestPermission().catch(() => {});
+    }
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [authorized]);
 
   useEffect(() => {
     if (!activeSessionId) return;
@@ -2083,6 +2131,11 @@ const styles = StyleSheet.create({
   },
   field: { gap: 6 },
   fieldLabel: { color: COLORS.ink, fontSize: 13, fontWeight: '600' },
+  sourceList: { gap: 6 },
+  sourceOption: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, padding: 10, backgroundColor: '#FFFFFF' },
+  sourceOptionActive: { borderColor: COLORS.primary, backgroundColor: '#F1EEFF' },
+  sourceOptionName: { color: COLORS.ink, fontSize: 13, fontWeight: '600' },
+  sourceOptionAccount: { color: COLORS.muted, fontSize: 11, marginTop: 2 },
   input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: COLORS.ink, backgroundColor: '#FFFFFF', fontSize: 14 },
   multilineInput: { minHeight: 96, textAlignVertical: 'top' },
   formGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },

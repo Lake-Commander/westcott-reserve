@@ -21,6 +21,7 @@ import { useAppTheme } from "../hooks/useAppTheme";
 import { useAppUIConfig } from "../components/AppUIConfigProvider";
 import { UI_ACTION_BY_ID } from "../services/appUiConfig";
 import { getAppSettings } from "../services/appSettingsService";
+import { showLocalNotification } from "../services/pushNotificationService";
 
 const HomeScreen = ({ navigation }) => {
   const dispatch = useDispatch();
@@ -55,13 +56,22 @@ const HomeScreen = ({ navigation }) => {
       setBalanceSettingsLoaded(false);
       const notificationCountRequest = supabase
         .from('admin_notifications')
-        .select('id', { count: 'exact', head: true })
-        .then(({ count, error }) => {
+        .select('id,audience_user_id')
+        .or(`audience_user_id.is.null,audience_user_id.eq.${reduxUser.id}`)
+        .then(async ({ data, error }) => {
           if (error) {
             console.warn('Unable to load notification count:', error);
             return 0;
           }
-          return count || 0;
+          const { data: states } = await supabase
+            .from('notification_states')
+            .select('notification_id,read_at,dismissed_at')
+            .eq('user_id', reduxUser.id);
+          const stateMap = new Map((states || []).map((state) => [state.notification_id, state]));
+          return (data || []).filter((item) => {
+            const state = stateMap.get(item.id);
+            return !state?.read_at && !state?.dismissed_at;
+          }).length;
         });
       Promise.all([
         getAppSettings(reduxUser.id),
@@ -90,6 +100,9 @@ const HomeScreen = ({ navigation }) => {
                   const audience = payload.new?.audience_user_id;
                   if (active && (!audience || audience === reduxUser.id)) {
                     setNotificationCount((count) => count + 1);
+                    showLocalNotification(notification.title, notification.message).catch((error) => {
+                      console.warn('Unable to show local notification:', error);
+                    });
                   }
                 }
               )
