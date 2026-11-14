@@ -32,6 +32,7 @@ export const BankService = {
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
 
+      let dedicatedBeneficiaries = [];
       if (!savedError && saved?.length) {
         const westcottAccountNumbers = saved
           .filter((item) =>
@@ -52,7 +53,7 @@ export const BankService = {
           );
         }
 
-        return (saved || []).map((item) => {
+        dedicatedBeneficiaries = (saved || []).map((item) => {
           const resolvedUsername = item.username || (
             String(item.identifier || '').startsWith('@')
               ? String(item.identifier).slice(1)
@@ -75,6 +76,8 @@ export const BankService = {
               String(item.bank_name || '').toLowerCase().includes('westcott'),
           };
         });
+        // Keep loading legacy transaction rows below so records created before
+        // the beneficiaries table are not hidden by newer saved rows.
       }
 
       // Older installations may not have the dedicated table yet.
@@ -157,6 +160,10 @@ export const BankService = {
         }
       }
 
+      for (const item of dedicatedBeneficiaries) {
+        const key = `${String(item.bank || '').toLowerCase()}:${item.accountNumber || item.identifier || item.name}`;
+        if (!map.has(key)) map.set(key, item);
+      }
       return Array.from(map.values());
     } catch (err) {
       console.warn('Beneficiaries query fallback executed:', err.message);

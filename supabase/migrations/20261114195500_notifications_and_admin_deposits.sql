@@ -123,12 +123,14 @@ BEGIN
 
   INSERT INTO public.transactions (
     user_id, type, amount, counterparty, receiver_name, account_number,
-    bank_name, category, note, review_status
+    bank_name, category, note, reference, review_status
   )
   VALUES (
     p_user_id, 'CREDIT', p_amount, p_sender_name, p_sender_name,
     p_sender_account, p_sender_name, 'Deposit',
-    'Deposit from ' || p_sender_name, 'normal'
+    'Deposit from ' || p_sender_name,
+    'WR-DEP-' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 16)),
+    'normal'
   );
 END;
 $$;

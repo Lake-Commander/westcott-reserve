@@ -8,6 +8,7 @@ import {
   Switch,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
   useWindowDimensions,
 } from 'react-native';
@@ -437,6 +438,7 @@ export default function AdminPanelScreen() {
   const [feedback, setFeedback] = useState('');
   const [feedbackError, setFeedbackError] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [desktopNotificationsEnabled, setDesktopNotificationsEnabled] = useState(false);
 
   const returnToWebsite = () => {
     if (typeof window !== 'undefined') window.location.assign('/');
@@ -575,6 +577,9 @@ export default function AdminPanelScreen() {
 
   useEffect(() => {
     if (!authorized) return undefined;
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setDesktopNotificationsEnabled(window.Notification.permission === 'granted');
+    }
     const channel = supabase
       .channel('admin-event-feed')
       .on('postgres_changes', {
@@ -590,15 +595,34 @@ export default function AdminPanelScreen() {
           new window.Notification(`Message from ${sender}`, { body: payload.new.message });
         }
       })
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'transactions',
+        filter: 'type=eq.CREDIT',
+      }, (payload) => {
+        const profile = profiles.find((item) => item.id === payload.new.user_id);
+        const recipient = profile?.name || profile?.email || 'a customer';
+        setFeedback(`A deposit was received by ${recipient}.`);
+        sendPushNotifications(
+          payload.new.user_id,
+          'Deposit received',
+          `${payload.new.amount} was added to your account.`
+        ).catch((error) => {
+          console.warn('Automatic deposit push failed:', error);
+        });
+        if (typeof window !== 'undefined' && 'Notification' in window && window.Notification.permission === 'granted') {
+          new window.Notification('Deposit received', {
+            body: `${recipient} received ${payload.new.amount}.`,
+          });
+        }
+      })
       .subscribe();
 
-    if (typeof window !== 'undefined' && 'Notification' in window && window.Notification.permission === 'default') {
-      window.Notification.requestPermission().catch(() => {});
-    }
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [authorized, chatSessions]);
+  }, [authorized, chatSessions, profiles]);
 
   useEffect(() => {
     if (!activeSessionId) return;
@@ -852,6 +876,18 @@ export default function AdminPanelScreen() {
         message: liveReplyText.trim(),
       });
       if (error) throw error;
+      const activeChat = chatSessions.find((chat) => chat.id === activeSessionId);
+      if (activeChat?.user_id) {
+        try {
+          await sendPushNotifications(
+            activeChat.user_id,
+            'Support replied',
+            liveReplyText.trim()
+          );
+        } catch (pushError) {
+          console.warn('Live reply saved but push delivery failed:', pushError);
+        }
+      }
       setLiveReplyText('');
     } catch (error) {
       setFeedback(error.message || 'Unable to send the reply.');
@@ -1455,7 +1491,7 @@ export default function AdminPanelScreen() {
             {chatSessions.map((chat) => (
               <Card
                 key={chat.id}
-                title={chat.profile?.name || chat.profile?.email || `Customer ${chat.user_id.slice(0, 8)}`}
+                title={chat.profile?.name || chat.profile?.email || `Customer ${(chat.user_id || '').slice(0, 8)}`}
               >
                 <Text style={styles.mutedText}>
                   Status: {chat.status} · Started: {formatDate(chat.created_at)}
@@ -1494,6 +1530,14 @@ export default function AdminPanelScreen() {
                 )}
               </Card>
             ))}
+            {!desktopNotificationsEnabled && typeof window !== 'undefined' && 'Notification' in window && (
+              <Button title="Enable desktop notifications" onPress={() => {
+                if (typeof window !== 'undefined' && 'Notification' in window) {
+                  window.Notification.requestPermission()
+                    .then((permission) => setDesktopNotificationsEnabled(permission === 'granted'));
+                }
+              }} secondary />
+            )}
             {chatSessions.length === 0 && <Text style={styles.mutedText}>No chat sessions exist.</Text>}
           </>
         )}
