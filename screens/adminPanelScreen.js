@@ -123,6 +123,33 @@ async function sendPushNotifications(audienceUserId, title, message) {
   return tokens.length;
 }
 
+async function fetchAdminTransactions() {
+  const attempts = [
+    'id,user_id,type,amount,counterparty,receiver_name,account_number,routing_number,bank_name,created_at,review_status',
+    'id,user_id,type,amount,counterparty,receiver_name,account_number,bank_name,created_at,review_status',
+    'id,user_id,type,amount,counterparty,receiver_name,account_number,created_at,review_status',
+  ];
+
+  for (const fields of attempts) {
+    const result = await supabase
+      .from('transactions')
+      .select(fields)
+      .order('created_at', { ascending: false })
+      .limit(150);
+
+    if (!result.error) return result;
+
+    const message = result.error.message || '';
+    const columnMissing = /column .* (routing_number|bank_name) .* does not exist|does not exist/i.test(message);
+    if (!columnMissing) return result;
+  }
+
+  return {
+    data: [],
+    error: null,
+  };
+}
+
 function Button({ title, onPress, disabled, secondary, danger }) {
   return (
     <Pressable
@@ -493,11 +520,7 @@ export default function AdminPanelScreen() {
     ] =
       await Promise.all([
         supabase.rpc('admin_list_profiles'),
-        supabase
-          .from('transactions')
-          .select('id,user_id,type,amount,counterparty,receiver_name,account_number,routing_number,bank_name,created_at,review_status')
-          .order('created_at', { ascending: false })
-          .limit(150),
+        fetchAdminTransactions(),
         supabase
           .from('support_chat_sessions')
           .select('id,user_id,status,created_at,updated_at')
