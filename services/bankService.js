@@ -249,6 +249,7 @@ export const BankService = {
     receiverAccount,
     receiverName,
     receiverUsername = null,
+    routingNumber = null,
     bankName,
     amount,
     currency = 'USD',
@@ -305,6 +306,7 @@ export const BankService = {
         .update({
           receiver_name: receiverName || null,
           account_number: receiverAccount || null,
+          routing_number: routingNumber || null,
           bank_name: bankName || 'Westcott Reserve Bank',
           counterparty: receiverUsername ? `@${receiverUsername.replace(/^@/, '')}` : receiverName,
         })

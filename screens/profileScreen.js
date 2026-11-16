@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Alert,
   Linking,
+  Image,
 } from 'react-native';
 import { useSelector } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
@@ -103,7 +104,11 @@ const ProfileScreen = ({ navigation }) => {
         <View style={[styles.tierCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
           <View style={styles.userTopRow}>
             <View style={styles.avatarCircle}>
-              <Text style={styles.avatarText}>{userInitials}</Text>
+              {user?.avatar_url ? (
+                <Image source={{ uri: user.avatar_url }} style={styles.avatarImage} />
+              ) : (
+                <Text style={styles.avatarText}>{userInitials}</Text>
+              )}
               <View style={[styles.shieldBadge, { backgroundColor: theme.cardBg }]}>
                 <Ionicons name="shield-checkmark" size={10} color="#D4AF37" />
               </View>
@@ -211,6 +216,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
   },
+  avatarImage: { width: '100%', height: '100%', borderRadius: 24 },
   shieldBadge: {
     position: 'absolute',
     bottom: -2,

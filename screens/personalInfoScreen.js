@@ -7,12 +7,15 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../services/supabaseClient';
+import { uploadProfileAvatar } from '../services/profileService';
 import ScreenWrapper from '../components/ScreenWrapper';
 import { useAppTheme } from '../hooks/useAppTheme';
+import * as ImagePicker from 'expo-image-picker';
 
 const PersonalInfoScreen = ({ navigation }) => {
   const dispatch = useDispatch();
@@ -21,6 +24,7 @@ const PersonalInfoScreen = ({ navigation }) => {
 
   const [user, setUser] = useState(reduxUser || null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -96,6 +100,34 @@ const PersonalInfoScreen = ({ navigation }) => {
     Alert.alert('Copied', `${field} copied to clipboard.`);
   };
 
+  const chooseProfilePhoto = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission required', 'Allow photo access to choose a profile picture.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.85,
+    });
+    if (result.canceled || !result.assets?.[0]?.uri) return;
+    setSaving(true);
+    try {
+      const asset = result.assets[0];
+      const avatarUrl = await uploadProfileAvatar(asset.uri, asset.mimeType || 'image/jpeg');
+      const updated = { ...user, avatar_url: avatarUrl };
+      setUser(updated);
+      dispatch({ type: 'SET_USER', payload: updated });
+      Alert.alert('Profile picture updated', 'Your new profile picture is now visible.');
+    } catch (error) {
+      Alert.alert('Unable to update picture', error.message || 'Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <ScreenWrapper style={{ justifyContent: 'center', alignItems: 'center' }}>
@@ -122,9 +154,16 @@ const PersonalInfoScreen = ({ navigation }) => {
 
         {/* User Header Card */}
         <View style={[styles.userCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-          <View style={styles.avatarCircle}>
-            <Text style={styles.avatarText}>{userInitials}</Text>
-          </View>
+          <TouchableOpacity onPress={chooseProfilePhoto} disabled={saving} activeOpacity={0.8}>
+            {user?.avatar_url ? (
+              <Image source={{ uri: user.avatar_url }} style={styles.avatarCircle} />
+            ) : (
+              <View style={styles.avatarCircle}>
+                <Text style={styles.avatarText}>{userInitials}</Text>
+              </View>
+            )}
+            <Text style={styles.changePhoto}>Change photo</Text>
+          </TouchableOpacity>
           <View style={styles.userTextCol}>
             <Text style={[styles.cardName, { color: theme.textPrimary }]}>{rawName.toUpperCase()}</Text>
             <Text style={[styles.cardHandle, { color: theme.textSecondary }]}>@{username}</Text>
@@ -225,6 +264,7 @@ const styles = StyleSheet.create({
     marginRight: 14,
   },
   avatarText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
+  changePhoto: { color: '#7052FF', fontSize: 10, fontWeight: '700', marginTop: 4, textAlign: 'center' },
   userTextCol: { flex: 1 },
   cardName: { fontSize: 15, fontWeight: '800', letterSpacing: 0.5 },
   cardHandle: { fontSize: 13, marginTop: 2, fontWeight: '500' },

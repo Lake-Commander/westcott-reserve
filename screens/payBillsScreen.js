@@ -11,18 +11,12 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import ScreenWrapper from '../components/ScreenWrapper';
 import { useAppTheme } from '../hooks/useAppTheme';
-
-const BILL_ITEMS = [
-  { id: 'airtime', name: 'Airtime', sub: 'Single and multiple airtime options', icon: 'phone-portrait-outline', isComingSoon: true },
-  { id: 'data', name: 'Data', sub: 'Single and multiple data options', icon: 'wifi-outline', isComingSoon: true },
-  { id: 'cable', name: 'Cable TV', sub: 'Recharge preferred cable easily', icon: 'tv-outline', isComingSoon: true },
-  { id: 'electricity', name: 'Electricity', sub: 'Pay for electricity bill fast and easy', icon: 'flash-outline', isComingSoon: true },
-  { id: 'betting', name: 'Betting', sub: 'Fund your bet wallet', icon: 'game-controller-outline', isComingSoon: true },
-  { id: 'flights', name: 'Flights', sub: 'Book and access flights globally', icon: 'airplane-outline', isComingSoon: true },
-];
+import { useAppUIConfig } from '../components/AppUIConfigProvider';
 
 const PayBillsScreen = ({ navigation }) => {
   const { theme } = useAppTheme();
+  const { config } = useAppUIConfig();
+  const billItems = config.home.billItems.filter((item) => item.enabled);
 
   const handlePress = (item) => {
     Alert.alert('Coming Soon', `${item.name} bill payments will be available in the next release.`);
@@ -47,12 +41,12 @@ const PayBillsScreen = ({ navigation }) => {
         </Text>
 
         <View style={[styles.cardContainer, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-          {BILL_ITEMS.map((item, index) => (
+          {billItems.map((item, index) => (
             <TouchableOpacity
               key={item.id}
               style={[
                 styles.itemRow,
-                index < BILL_ITEMS.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.cardBorder },
+                index < billItems.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.cardBorder },
               ]}
               onPress={() => handlePress(item)}
               activeOpacity={0.7}

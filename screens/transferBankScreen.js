@@ -26,6 +26,7 @@ const TransferBankScreen = ({ navigation, route }) => {
   const accountCurrency = currentUser?.currency || 'USD';
 
   const [accountNumber, setAccountNumber] = useState('');
+  const [routingNumber, setRoutingNumber] = useState('');
   const [selectedBank, setSelectedBank] = useState(null);
   const [amount, setAmount] = useState('');
   const [narration, setNarration] = useState('');
@@ -42,6 +43,7 @@ const TransferBankScreen = ({ navigation, route }) => {
     const recipientAccount = params.recipientAccount || params.accountNumber || beneficiary.accountNumber;
     const recipientBank = params.recipientBank || params.bankName || beneficiary.bank;
     const recipientName = params.recipientName || beneficiary.name;
+    const selectedBankName = params.selectedBank;
 
     if (recipientAccount || recipientBank || recipientName) {
       if (recipientAccount) {
@@ -54,6 +56,10 @@ const TransferBankScreen = ({ navigation, route }) => {
         setResolvedName(String(recipientName).toUpperCase());
         setVerifyStatus('verified');
       }
+      if (selectedBankName) {
+        setSelectedBank(String(selectedBankName));
+        setVerifyStatus('idle');
+      }
 
       navigation.setParams({
         beneficiary: undefined,
@@ -62,6 +68,7 @@ const TransferBankScreen = ({ navigation, route }) => {
         recipientName: undefined,
         accountNumber: undefined,
         bankName: undefined,
+        selectedBank: undefined,
       });
     }
   }, [route?.params, navigation]);
@@ -153,6 +160,7 @@ const TransferBankScreen = ({ navigation, route }) => {
       const receipt = await BankService.executeNipTransfer({
         senderId: currentUser.id,
         receiverAccount: accountNumber.trim(),
+        routingNumber: routingNumber.trim() || null,
         receiverName: recipientLabel,
         receiverUsername: null,
         bankName: selectedBank || 'Westcott Reserve Bank',
@@ -178,6 +186,7 @@ const TransferBankScreen = ({ navigation, route }) => {
           amount: numAmt,
           recipient: recipientLabel,
           account_number: accountNumber.trim(),
+          routing_number: routingNumber.trim() || null,
           bank: selectedBank || 'Westcott Reserve Bank',
           sender_name: currentUser?.name || 'Account Holder',
           note: transferNote,
@@ -284,9 +293,7 @@ const TransferBankScreen = ({ navigation, route }) => {
                   { justifyContent: 'space-between', marginTop: 8, backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
                 ]}
                 onPress={() =>
-                  navigation.navigate('selectBank', {
-                    onSelect: (bankName) => setSelectedBank(bankName),
-                  })
+                  navigation.navigate('selectBank')
                 }
                 activeOpacity={0.7}
               >
@@ -359,6 +366,21 @@ const TransferBankScreen = ({ navigation, route }) => {
                   keyboardType="numeric"
                   value={amount}
                   onChangeText={setAmount}
+                />
+              </View>
+
+              <Text style={[styles.fieldLabel, { marginTop: 16, color: theme.textSecondary }]}>
+                Routing number <Text style={{ fontWeight: '400' }}>(optional)</Text>
+              </Text>
+              <View style={[styles.inputContainer, { marginTop: 8, backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}>
+                <TextInput
+                  style={[styles.textInput, { color: theme.textPrimary }]}
+                  placeholder="Enter routing number if required"
+                  placeholderTextColor={theme.textMuted}
+                  value={routingNumber}
+                  onChangeText={(value) => setRoutingNumber(value.replace(/\D/g, '').slice(0, 9))}
+                  keyboardType="number-pad"
+                  maxLength={9}
                 />
               </View>
 

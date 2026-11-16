@@ -273,6 +273,49 @@ export const AuthService = {
     return data?.mpin === inputMpin;
   },
 
+  updateProfile: async ({ phone, mpin }) => {
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+    const userId = sessionData.session?.user?.id;
+    if (!userId) throw new Error('Your session has expired. Please sign in again.');
+
+    const values = {};
+    if (phone !== undefined) values.phone = phone.trim();
+    if (mpin !== undefined) {
+      if (!/^\d{4}$/.test(mpin)) throw new Error('Your MPIN must contain exactly four digits.');
+      values.mpin = mpin;
+    }
+    if (!Object.keys(values).length) return null;
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .update(values)
+      .eq('id', userId)
+      .select()
+      .single();
+    if (error) throw error;
+    await AsyncStorage.setItem(CACHED_USER_KEY, JSON.stringify(data));
+    return data;
+  },
+
+  changePassword: async ({ currentPassword, newPassword }) => {
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+    const email = sessionData.session?.user?.email;
+    if (!email) throw new Error('Your session has expired. Please sign in again.');
+    if (!currentPassword || !newPassword) throw new Error('Enter your current and new passwords.');
+
+    const { error: reauthError } = await supabase.auth.signInWithPassword({
+      email,
+      password: currentPassword,
+    });
+    if (reauthError) throw new Error('Your current password is incorrect.');
+
+    const { data, error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+    return data;
+  },
+
   // Request 6-digit OTP sent to registered email
   sendPasswordResetOtp: async (email) => {
     const { data, error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase());

@@ -219,6 +219,14 @@ with the configured Supabase secrets; no `.env` file is needed in Vercel or Git.
 Each manual workflow run updates the production website and APK together. The
 APK is not committed to the repository.
 
+Profile pictures are stored in a Vercel Blob store by `/api/profile/avatar`.
+Configure the Vercel project with `BLOB_READ_WRITE_TOKEN`, `SUPABASE_URL`, and
+`SUPABASE_ANON_KEY` (the latter two may use the existing `EXPO_PUBLIC_*`
+names). Set the mobile build variable `EXPO_PUBLIC_API_URL` to the deployed
+Vercel origin (for example `https://your-project.vercel.app`) so native builds
+can reach the API; browser builds use their current origin automatically.
+Apply the profile avatar Supabase migration before enabling photo uploads.
+
 ### GitHub Actions build
 
 The workflow is manually triggered at **Actions → Build Westcott Reserve APK →

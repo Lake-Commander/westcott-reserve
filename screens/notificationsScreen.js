@@ -6,6 +6,7 @@ import ScreenWrapper from '../components/ScreenWrapper';
 import { useAppTheme } from '../hooks/useAppTheme';
 import { supabase } from '../services/supabaseClient';
 import { getAppSettings } from '../services/appSettingsService';
+import { showLocalNotification } from '../services/pushNotificationService';
 
 export default function NotificationsScreen({ navigation }) {
   const { theme } = useAppTheme();
@@ -30,10 +31,6 @@ export default function NotificationsScreen({ navigation }) {
 
           const settings = await getAppSettings(userId);
           if (active) setInAppNotificationsEnabled(settings.in_app_notifications_enabled);
-          if (!settings.in_app_notifications_enabled) {
-            if (active) setNotifications([]);
-            return;
-          }
 
           notificationChannel = supabase
             .channel(`app-notifications-${userId}`)
@@ -45,6 +42,12 @@ export default function NotificationsScreen({ navigation }) {
                 if (!active || (notification.audience_user_id && notification.audience_user_id !== userId)) {
                   return;
                 }
+                if (settings.push_notifications_enabled) {
+                  showLocalNotification(notification.title, notification.message).catch((error) => {
+                    console.warn('Unable to show notification alert:', error);
+                  });
+                }
+                if (!settings.in_app_notifications_enabled) return;
                 setNotifications((current) => [
                   notification,
                   ...current.filter((item) => item.id !== notification.id),
@@ -64,6 +67,10 @@ export default function NotificationsScreen({ navigation }) {
             .limit(100);
           if (error) throw error;
           if (!active) return;
+          if (!settings.in_app_notifications_enabled) {
+            setNotifications([]);
+            return;
+          }
           const { data: states, error: stateError } = await supabase
             .from('notification_states')
             .select('notification_id,read_at,dismissed_at')

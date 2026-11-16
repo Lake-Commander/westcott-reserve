@@ -279,7 +279,7 @@ const LiveSupportChatScreen = ({ navigation }) => {
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 24}
       >
         <View style={styles.topBar}>
           <TouchableOpacity style={[styles.backCircle, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]} onPress={() => setView('history')}>
@@ -304,7 +304,7 @@ const LiveSupportChatScreen = ({ navigation }) => {
         ) : (
           <ScrollView
             style={styles.chat}
-            contentContainerStyle={styles.chatContent}
+            contentContainerStyle={[styles.chatContent, { paddingBottom: 24 }]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             ref={scrollViewRef}

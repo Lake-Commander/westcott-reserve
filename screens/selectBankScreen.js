@@ -15,12 +15,10 @@ import { WebAnchor } from '../components/WebAnchor';
 import { DEFAULT_UI_CONFIG } from '../services/appUiConfig';
 import { useAppUIConfig } from '../components/AppUIConfigProvider';
 
-const SelectBankScreen = ({ navigation, route }) => {
+const SelectBankScreen = ({ navigation }) => {
   const { theme } = useAppTheme();
   const { config } = useAppUIConfig();
   const [search, setSearch] = useState('');
-
-  const onSelect = route?.params?.onSelect;
 
   const configuredBanks = config.banks?.length ? config.banks : DEFAULT_UI_CONFIG.banks;
   const bankGroups = configuredBanks.reduce((groups, bank) => {
@@ -40,10 +38,11 @@ const SelectBankScreen = ({ navigation, route }) => {
     .sort((left, right) => left.title.localeCompare(right.title));
 
   const handleSelect = (bank) => {
-    if (onSelect) {
-      onSelect(bank.name);
-    }
-    navigation.goBack();
+    navigation.navigate({
+      name: 'transferBank',
+      params: { selectedBank: bank.name },
+      merge: true,
+    });
   };
 
   const renderBankItem = ({ item }) => (

@@ -12,6 +12,16 @@ export const UI_ACTION_BY_ID = Object.fromEntries(
   UI_ACTIONS.map((action) => [action.id, action])
 );
 
+export const BILL_ITEMS = [
+  { id: 'airtime', name: 'Airtime', sub: 'Single and multiple airtime options', icon: 'phone-portrait-outline' },
+  { id: 'data', name: 'Data', sub: 'Single and multiple data options', icon: 'wifi-outline' },
+  { id: 'cable', name: 'Cable TV', sub: 'Recharge preferred cable easily', icon: 'tv-outline' },
+  { id: 'electricity', name: 'Electricity', sub: 'Pay for electricity bill fast and easy', icon: 'flash-outline' },
+  { id: 'betting', name: 'Betting', sub: 'Fund your bet wallet', icon: 'game-controller-outline' },
+  { id: 'flights', name: 'Flights', sub: 'Book and access flights globally', icon: 'airplane-outline' },
+];
+export const BILL_ITEM_BY_ID = Object.fromEntries(BILL_ITEMS.map((item) => [item.id, item]));
+
 export const DEFAULT_UI_CONFIG = {
   version: 1,
   theme: {
@@ -38,6 +48,7 @@ export const DEFAULT_UI_CONFIG = {
       { id: 'global_accounts', label: 'Global', enabled: true },
       { id: 'cards', label: 'Cards', enabled: true },
     ],
+    billItems: BILL_ITEMS.map((item) => ({ ...item, enabled: true })),
   },
   banks: [
     { id: 'westcott', name: 'Westcott Reserve', country: 'United States', internal: true },
@@ -80,6 +91,16 @@ export function normalizeUIConfig(value) {
       quickActions: Array.isArray(value.home?.quickActions)
         ? value.home.quickActions.filter((item) => UI_ACTION_BY_ID[item?.id])
         : cloneUIConfig(DEFAULT_UI_CONFIG.home.quickActions),
+      billItems: Array.isArray(value.home?.billItems)
+        ? value.home.billItems
+          .filter((item) => BILL_ITEM_BY_ID[item?.id])
+          .map((item) => ({
+            ...BILL_ITEM_BY_ID[item.id],
+            name: typeof item.name === 'string' && item.name.trim() ? item.name : BILL_ITEM_BY_ID[item.id].name,
+            sub: typeof item.sub === 'string' && item.sub.trim() ? item.sub : BILL_ITEM_BY_ID[item.id].sub,
+            enabled: item.enabled !== false,
+          }))
+        : cloneUIConfig(DEFAULT_UI_CONFIG.home.billItems),
     },
     banks: Array.isArray(value.banks) && value.banks.length
       ? value.banks.filter(

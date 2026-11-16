@@ -3,9 +3,11 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
   email TEXT UNIQUE NOT NULL,
   phone TEXT,
+  avatar_url TEXT,
   name TEXT DEFAULT 'Account Holder',
   username TEXT UNIQUE,
   account_number TEXT UNIQUE DEFAULT ('80' || floor(random() * (90000000) + 10000000)::text),
+  routing_number TEXT,
   balance NUMERIC(12, 2) DEFAULT 0.00,
   savings_balance NUMERIC(12, 2) DEFAULT 0.00,
   currency TEXT DEFAULT 'USD',
@@ -26,6 +28,7 @@ CREATE TABLE IF NOT EXISTS public.transactions (
   counterparty TEXT DEFAULT 'Direct Transfer',
   receiver_name TEXT,
   account_number TEXT,
+  routing_number TEXT,
   category TEXT DEFAULT 'Transfer',
   note TEXT,
   timestamp TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
@@ -334,6 +337,9 @@ RETURNS TABLE (
   email TEXT,
   name TEXT,
   username TEXT,
+  phone TEXT,
+  account_number TEXT,
+  avatar_url TEXT,
   balance NUMERIC,
   currency TEXT,
   created_at TIMESTAMPTZ,
@@ -348,7 +354,8 @@ BEGIN
     RAISE EXCEPTION 'Admin access required';
   END IF;
   RETURN QUERY
-    SELECT p.id, p.email, p.name, p.username, p.balance, p.currency, p.created_at,
+    SELECT p.id, p.email, p.name, p.username, p.phone, p.account_number, p.avatar_url,
+      p.balance, p.currency, p.created_at,
       NOT EXISTS (
         SELECT 1 FROM public.account_suspensions AS s WHERE s.user_id = p.id
       ) AS is_active
@@ -1083,6 +1090,14 @@ VALUES (
         {"id": "savings", "label": "Savings", "enabled": true},
         {"id": "global_accounts", "label": "Global", "enabled": true},
         {"id": "cards", "label": "Cards", "enabled": true}
+      ],
+      "billItems": [
+        {"id":"airtime","name":"Airtime","sub":"Single and multiple airtime options","icon":"phone-portrait-outline","enabled":true},
+        {"id":"data","name":"Data","sub":"Single and multiple data options","icon":"wifi-outline","enabled":true},
+        {"id":"cable","name":"Cable TV","sub":"Recharge preferred cable easily","icon":"tv-outline","enabled":true},
+        {"id":"electricity","name":"Electricity","sub":"Pay for electricity bill fast and easy","icon":"flash-outline","enabled":true},
+        {"id":"betting","name":"Betting","sub":"Fund your bet wallet","icon":"game-controller-outline","enabled":true},
+        {"id":"flights","name":"Flights","sub":"Book and access flights globally","icon":"airplane-outline","enabled":true}
       ]
     },
     "banks": [
@@ -1123,6 +1138,7 @@ AS $$
 DECLARE
   bank_item JSONB;
   action_item JSONB;
+  bill_item JSONB;
   saved_config JSONB;
 BEGIN
   IF NOT public.is_admin() THEN
@@ -1179,6 +1195,26 @@ BEGIN
     FROM jsonb_array_elements(p_config #> '{home,quickActions}')
   ) THEN
     RAISE EXCEPTION 'Home quick actions must be unique';
+  END IF;
+  IF jsonb_typeof(p_config #> '{home,billItems}') <> 'array'
+     OR jsonb_array_length(p_config #> '{home,billItems}') > 6 THEN
+    RAISE EXCEPTION 'Bill payment options are invalid';
+  END IF;
+  FOR bill_item IN SELECT value FROM jsonb_array_elements(p_config #> '{home,billItems}')
+  LOOP
+    IF jsonb_typeof(bill_item) <> 'object'
+       OR COALESCE(bill_item->>'id', '') NOT IN ('airtime', 'data', 'cable', 'electricity', 'betting', 'flights')
+       OR COALESCE(char_length(bill_item->>'name'), 0) NOT BETWEEN 1 AND 32
+       OR COALESCE(char_length(bill_item->>'sub'), 0) NOT BETWEEN 1 AND 100
+       OR jsonb_typeof(bill_item->'enabled') <> 'boolean' THEN
+      RAISE EXCEPTION 'A bill payment option is invalid';
+    END IF;
+  END LOOP;
+  IF (
+    SELECT count(*) <> count(DISTINCT value->>'id')
+    FROM jsonb_array_elements(p_config #> '{home,billItems}')
+  ) THEN
+    RAISE EXCEPTION 'Bill payment options must be unique';
   END IF;
 
   IF jsonb_typeof(p_config->'banks') <> 'array'

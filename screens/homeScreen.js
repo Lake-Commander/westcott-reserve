@@ -89,8 +89,9 @@ const HomeScreen = ({ navigation }) => {
           balanceSettingsRef.current = { userId: reduxUser.id, value: enabled };
           setShowBalanceOnLaunch(enabled);
           const notificationsEnabled = Boolean(settings.in_app_notifications_enabled);
+          const pushNotificationsEnabled = Boolean(settings.push_notifications_enabled);
           setNotificationCount(notificationsEnabled ? loadedNotificationCount : 0);
-          if (notificationsEnabled) {
+          if (notificationsEnabled || pushNotificationsEnabled) {
             notificationChannel = supabase
               .channel(`home-notifications-${reduxUser.id}`)
               .on(
@@ -100,9 +101,11 @@ const HomeScreen = ({ navigation }) => {
                   const audience = payload.new?.audience_user_id;
                   if (active && (!audience || audience === reduxUser.id)) {
                     setNotificationCount((count) => count + 1);
-                    showLocalNotification(notification.title, notification.message).catch((error) => {
+                    if (pushNotificationsEnabled) {
+                      showLocalNotification(payload.new?.title, payload.new?.message).catch((error) => {
                       console.warn('Unable to show local notification:', error);
-                    });
+                      });
+                    }
                   }
                 }
               )

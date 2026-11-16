@@ -18,8 +18,11 @@ import { useAppUIConfig } from '../components/AppUIConfigProvider';
 import {
   cloneUIConfig,
   DEFAULT_UI_CONFIG,
+  normalizeUIConfig,
   UI_ACTIONS,
   UI_ACTION_BY_ID,
+  BILL_ITEMS,
+  BILL_ITEM_BY_ID,
 } from '../services/appUiConfig';
 import { formatCurrencyAmount, getIndicativeFxRate } from '../services/fxRateService';
 import { requiresTotpChallenge, verifyCurrentTotpCode } from '../services/mfaService';
@@ -492,7 +495,7 @@ export default function AdminPanelScreen() {
         supabase.rpc('admin_list_profiles'),
         supabase
           .from('transactions')
-          .select('id,user_id,type,amount,counterparty,receiver_name,account_number,bank_name,created_at,review_status')
+          .select('id,user_id,type,amount,counterparty,receiver_name,account_number,routing_number,bank_name,created_at,review_status')
           .order('created_at', { ascending: false })
           .limit(150),
         supabase
@@ -543,7 +546,7 @@ export default function AdminPanelScreen() {
     setSupportMessages(customerCareResult.data || []);
     setFeatures(featureResult.data || []);
     setAuditEvents(auditResult.data || []);
-    const loadedConfig = uiConfigResult.data?.config || DEFAULT_UI_CONFIG;
+    const loadedConfig = normalizeUIConfig(uiConfigResult.data?.config || DEFAULT_UI_CONFIG);
     setUiDraft(cloneUIConfig(loadedConfig));
     replaceConfig(loadedConfig);
   }, [replaceConfig]);
@@ -1008,6 +1011,18 @@ export default function AdminPanelScreen() {
     }));
   };
 
+  const updateBillItem = (itemId, changes) => {
+    setUiDraft((current) => ({
+      ...current,
+      home: {
+        ...current.home,
+        billItems: current.home.billItems.map((item) =>
+          item.id === itemId ? { ...item, ...changes } : item
+        ),
+      },
+    }));
+  };
+
   const addQuickAction = (actionId) => {
     const action = UI_ACTION_BY_ID[actionId];
     if (!action || uiDraft.home.quickActions.some((item) => item.id === actionId)) return;
@@ -1367,8 +1382,11 @@ export default function AdminPanelScreen() {
             </Text>
             {profiles.map((profile) => (
               <Card key={profile.id} title={profile.name || profile.email}>
-                <Text style={styles.mutedText}>{profile.email}</Text>
-                <Text style={styles.mutedText}>Account ID: {profile.id}</Text>
+                <Text style={styles.mutedText}>Email: {profile.email || 'Not provided'}</Text>
+                <Text style={styles.mutedText}>Phone: {profile.phone || 'Not provided'}</Text>
+                <Text style={styles.mutedText}>Username: {profile.username ? `@${profile.username}` : 'Not provided'}</Text>
+                <Text style={styles.mutedText}>Account number: {profile.account_number || 'Not assigned'}</Text>
+                <Text style={styles.mutedText}>User ID: {profile.id}</Text>
                 <Text style={styles.mutedText}>
                   Main balance: {formatCurrencyAmount(profile.balance, profile.currency || 'USD')}
                 </Text>
@@ -1810,6 +1828,54 @@ export default function AdminPanelScreen() {
                     onPress={() => addQuickAction(action.id)}
                     secondary
                     disabled={uiDraft.home.quickActions.length >= 7}
+                  />
+                ))}
+              </View>
+            </Card>
+
+            <Card title="Bill payment options">
+              <Text style={styles.mutedText}>
+                Rename or hide the prebuilt bill categories shown in the Pay Bills screen.
+              </Text>
+              {(uiDraft.home.billItems || []).map((item) => {
+                const definition = BILL_ITEM_BY_ID[item.id];
+                return (
+                  <View key={item.id} style={styles.configRow}>
+                    <View style={styles.configActionIcon}>
+                      <Ionicons name={definition?.icon || item.icon} size={18} color={COLORS.primary} />
+                    </View>
+                    <View style={styles.configActionMain}>
+                      <Field
+                        label={definition?.name || item.id}
+                        value={item.name}
+                        onChangeText={(value) => updateBillItem(item.id, { name: value })}
+                        maxLength={32}
+                      />
+                    </View>
+                    <Switch
+                      accessibilityLabel={`Show ${item.name}`}
+                      value={item.enabled}
+                      onValueChange={(value) => updateBillItem(item.id, { enabled: value })}
+                      trackColor={{ true: COLORS.primary }}
+                    />
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove ${item.name}`}
+                      onPress={() => updateUiHome('billItems', uiDraft.home.billItems.filter((entry) => entry.id !== item.id))}
+                      style={styles.removeButton}
+                    >
+                      <Ionicons name="close" size={18} color={COLORS.danger} />
+                    </Pressable>
+                  </View>
+                );
+              })}
+              <View style={styles.chipRow}>
+                {BILL_ITEMS.filter((item) => !uiDraft.home.billItems.some((entry) => entry.id === item.id)).map((item) => (
+                  <Button
+                    key={item.id}
+                    title={`+ ${item.name}`}
+                    onPress={() => updateUiHome('billItems', [...uiDraft.home.billItems, { ...item, enabled: true }])}
+                    secondary
                   />
                 ))}
               </View>
