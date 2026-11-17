@@ -14,8 +14,9 @@ import { useAppTheme } from '../hooks/useAppTheme';
 import { WebAnchor } from '../components/WebAnchor';
 import { DEFAULT_UI_CONFIG } from '../services/appUiConfig';
 import { useAppUIConfig } from '../components/AppUIConfigProvider';
+import { CommonActions } from '@react-navigation/native';
 
-const SelectBankScreen = ({ navigation }) => {
+const SelectBankScreen = ({ navigation, route }) => {
   const { theme } = useAppTheme();
   const { config } = useAppUIConfig();
   const [search, setSearch] = useState('');
@@ -38,11 +39,17 @@ const SelectBankScreen = ({ navigation }) => {
     .sort((left, right) => left.title.localeCompare(right.title));
 
   const handleSelect = (bank) => {
-    navigation.navigate({
-      name: 'transferBank',
-      params: { selectedBank: bank.name },
-      merge: true,
-    });
+    const returnRouteKey = route?.params?.returnRouteKey;
+    if (returnRouteKey) {
+      navigation.dispatch({
+        ...CommonActions.setParams({ selectedBank: bank.name }),
+        source: returnRouteKey,
+      });
+      navigation.goBack();
+      return;
+    }
+
+    navigation.navigate('transferBank', { selectedBank: bank.name });
   };
 
   const renderBankItem = ({ item }) => (

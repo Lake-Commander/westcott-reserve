@@ -293,7 +293,7 @@ const TransferBankScreen = ({ navigation, route }) => {
                   { justifyContent: 'space-between', marginTop: 8, backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
                 ]}
                 onPress={() =>
-                  navigation.navigate('selectBank')
+                  navigation.navigate('selectBank', { returnRouteKey: route.key })
                 }
                 activeOpacity={0.7}
               >
