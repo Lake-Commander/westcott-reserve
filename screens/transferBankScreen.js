@@ -45,7 +45,7 @@ const TransferBankScreen = ({ navigation, route }) => {
     const recipientName = params.recipientName || beneficiary.name;
     const selectedBankName = params.selectedBank;
 
-    if (recipientAccount || recipientBank || recipientName) {
+    if (recipientAccount || recipientBank || recipientName || selectedBankName) {
       if (recipientAccount) {
         setAccountNumber(String(recipientAccount));
       }
