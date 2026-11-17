@@ -9,6 +9,7 @@ import {
   Alert,
   RefreshControl,
   Modal,
+  Image,
 } from "react-native";
 import { useSelector, useDispatch } from "react-redux";
 import { useFocusEffect } from "@react-navigation/native";
@@ -41,6 +42,17 @@ const HomeScreen = ({ navigation }) => {
   const [notificationCount, setNotificationCount] = useState(0);
   const [receiveModalVisible, setReceiveModalVisible] = useState(false);
   const balanceSettingsRef = useRef({ userId: null, value: null });
+
+  useEffect(() => {
+    if (!reduxUser) {
+      setUser(null);
+      setBalance(0);
+      return;
+    }
+
+    setUser(reduxUser);
+    setBalance(Number(reduxUser.balance || 0));
+  }, [reduxUser?.id, reduxUser?.avatar_url, reduxUser?.balance, reduxUser?.currency, reduxUser?.name, reduxUser?.username, reduxUser?.email, reduxUser?.account_number]);
 
   useFocusEffect(
     useCallback(() => {
@@ -273,11 +285,15 @@ const HomeScreen = ({ navigation }) => {
       <View style={[styles.headerBar, { borderBottomColor: theme.cardBorder }]}>
         <View style={styles.headerLeft}>
           <TouchableOpacity
-            style={[styles.avatarCircle, { backgroundColor: theme.accent }]}
+            style={[styles.avatarCircle, { backgroundColor: user?.avatar_url ? "transparent" : theme.accent }]}
             onPress={() => navigation.navigate("personalInfo")}
             activeOpacity={0.7}
           >
-            <Text style={styles.avatarText}>{userInitials}</Text>
+            {user?.avatar_url ? (
+              <Image source={{ uri: user.avatar_url }} style={styles.avatarImage} />
+            ) : (
+              <Text style={styles.avatarText}>{userInitials}</Text>
+            )}
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.headerTextCol}
@@ -647,6 +663,11 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "800",
+  },
+  avatarImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
   },
   headerTextCol: {
     justifyContent: "center",
