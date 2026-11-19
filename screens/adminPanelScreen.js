@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -125,9 +126,9 @@ async function sendPushNotifications(audienceUserId, title, message) {
 
 async function fetchAdminTransactions() {
   const attempts = [
-    'id,user_id,type,amount,counterparty,receiver_name,account_number,routing_number,bank_name,created_at,review_status',
-    'id,user_id,type,amount,counterparty,receiver_name,account_number,bank_name,created_at,review_status',
-    'id,user_id,type,amount,counterparty,receiver_name,account_number,created_at,review_status',
+    'id,user_id,type,amount,counterparty,receiver_name,account_number,routing_number,bank_name,category,note,timestamp,created_at,review_status',
+    'id,user_id,type,amount,counterparty,receiver_name,account_number,bank_name,category,note,timestamp,created_at,review_status',
+    'id,user_id,type,amount,counterparty,receiver_name,account_number,category,note,timestamp,created_at,review_status',
   ];
 
   for (const fields of attempts) {
@@ -462,6 +463,8 @@ export default function AdminPanelScreen() {
   const [noticeUserId, setNoticeUserId] = useState('');
   const [emailNotification, setEmailNotification] = useState(false);
   const [pushNotification, setPushNotification] = useState(true);
+  const [receiptEditorTransaction, setReceiptEditorTransaction] = useState(null);
+  const [receiptDraft, setReceiptDraft] = useState(null);
   
   // Loading & Feedback State
   const [busy, setBusy] = useState(false);
@@ -807,6 +810,74 @@ export default function AdminPanelScreen() {
       },
       'Transaction review status updated and recorded.'
     );
+
+  const openReceiptEditor = (transaction) => {
+    const transactionDate = new Date(transaction.timestamp || transaction.created_at);
+    setReceiptEditorTransaction(transaction);
+    setReceiptDraft({
+      amount: String(transaction.amount ?? ''),
+      timestamp: Number.isNaN(transactionDate.getTime())
+        ? ''
+        : transactionDate.toISOString().slice(0, 16),
+      counterparty: transaction.counterparty || '',
+      receiverName: transaction.receiver_name || '',
+      accountNumber: transaction.account_number || '',
+      routingNumber: transaction.routing_number || '',
+      bankName: transaction.bank_name || '',
+      category: transaction.category || '',
+      note: transaction.note || '',
+    });
+  };
+
+  const closeReceiptEditor = () => {
+    if (busy) return;
+    setReceiptEditorTransaction(null);
+    setReceiptDraft(null);
+  };
+
+  const saveReceipt = async () => {
+    if (!receiptEditorTransaction || !receiptDraft) return;
+    const amount = Number(receiptDraft.amount);
+    const timestamp = new Date(receiptDraft.timestamp);
+    if (!Number.isFinite(amount) || amount < 0) {
+      setFeedback('Enter a valid non-negative transaction amount.');
+      setFeedbackError(true);
+      return;
+    }
+    if (Number.isNaN(timestamp.getTime())) {
+      setFeedback('Enter a valid date and time in YYYY-MM-DDTHH:mm format.');
+      setFeedbackError(true);
+      return;
+    }
+
+    setBusy(true);
+    setFeedback('');
+    setFeedbackError(false);
+    try {
+      const { error } = await supabase.rpc('admin_update_transaction_receipt', {
+        p_transaction_id: receiptEditorTransaction.id,
+        p_amount: amount,
+        p_timestamp: timestamp.toISOString(),
+        p_counterparty: receiptDraft.counterparty,
+        p_receiver_name: receiptDraft.receiverName,
+        p_account_number: receiptDraft.accountNumber,
+        p_routing_number: receiptDraft.routingNumber,
+        p_bank_name: receiptDraft.bankName,
+        p_category: receiptDraft.category,
+        p_note: receiptDraft.note,
+      });
+      if (error) throw error;
+      setReceiptEditorTransaction(null);
+      setReceiptDraft(null);
+      await loadData();
+      setFeedback('Transaction receipt updated and recorded in the audit log.');
+    } catch (error) {
+      setFeedback(error.message || 'Unable to update the transaction receipt.');
+      setFeedbackError(true);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const setAccountTransferRestriction = async (profile, restricted) => {
     setBusy(true);
@@ -1375,8 +1446,14 @@ export default function AdminPanelScreen() {
                 <Text style={styles.mutedText}>Transaction: {transaction.id}</Text>
                 <Text style={styles.mutedText}>Account: {transaction.user_id}</Text>
                 <Text style={styles.mutedText}>
-                  {transaction.counterparty || 'Account activity'} · {formatDate(transaction.created_at)}
+                  {transaction.counterparty || 'Account activity'} · {formatDate(transaction.timestamp || transaction.created_at)}
                 </Text>
+                <Button
+                  title="Edit receipt"
+                  onPress={() => openReceiptEditor(transaction)}
+                  disabled={busy}
+                  secondary
+                />
                 <View style={styles.stateButtons}>
                   {REVIEW_STATES.map((state) => (
                     <Button
@@ -2032,6 +2109,103 @@ export default function AdminPanelScreen() {
           </ScrollView>
         </View>
       </View>
+      <Modal
+        visible={Boolean(receiptEditorTransaction && receiptDraft)}
+        animationType="slide"
+        transparent
+        onRequestClose={closeReceiptEditor}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.receiptEditor}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Edit transaction receipt</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Close receipt editor"
+                onPress={closeReceiptEditor}
+                disabled={busy}
+              >
+                <Ionicons name="close" size={24} color={COLORS.ink} />
+              </Pressable>
+            </View>
+            {receiptDraft && (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <Text style={styles.mutedText}>
+                  Changes affect the customer-facing receipt and are recorded in the admin audit log.
+                </Text>
+                <Field
+                  label="Amount"
+                  value={receiptDraft.amount}
+                  onChangeText={(value) => setReceiptDraft((draft) => ({ ...draft, amount: value.replace(/[^0-9.]/g, '') }))}
+                  placeholder="0.00"
+                  editable={!busy}
+                />
+                <Field
+                  label="Date and time (UTC)"
+                  value={receiptDraft.timestamp}
+                  onChangeText={(value) => setReceiptDraft((draft) => ({ ...draft, timestamp: value }))}
+                  placeholder="2026-11-19T16:30"
+                  editable={!busy}
+                />
+                <Field
+                  label="Counterparty"
+                  value={receiptDraft.counterparty}
+                  onChangeText={(value) => setReceiptDraft((draft) => ({ ...draft, counterparty: value }))}
+                  placeholder="Account activity"
+                  editable={!busy}
+                />
+                <Field
+                  label="Receiver or sender name"
+                  value={receiptDraft.receiverName}
+                  onChangeText={(value) => setReceiptDraft((draft) => ({ ...draft, receiverName: value }))}
+                  placeholder="Name on receipt"
+                  editable={!busy}
+                />
+                <Field
+                  label="Account number"
+                  value={receiptDraft.accountNumber}
+                  onChangeText={(value) => setReceiptDraft((draft) => ({ ...draft, accountNumber: value }))}
+                  placeholder="Account number"
+                  editable={!busy}
+                />
+                <Field
+                  label="Routing number"
+                  value={receiptDraft.routingNumber}
+                  onChangeText={(value) => setReceiptDraft((draft) => ({ ...draft, routingNumber: value }))}
+                  placeholder="Routing number"
+                  editable={!busy}
+                />
+                <Field
+                  label="Bank name"
+                  value={receiptDraft.bankName}
+                  onChangeText={(value) => setReceiptDraft((draft) => ({ ...draft, bankName: value }))}
+                  placeholder="Destination bank"
+                  editable={!busy}
+                />
+                <Field
+                  label="Category"
+                  value={receiptDraft.category}
+                  onChangeText={(value) => setReceiptDraft((draft) => ({ ...draft, category: value }))}
+                  placeholder="Transfer"
+                  editable={!busy}
+                />
+                <Field
+                  label="Note"
+                  value={receiptDraft.note}
+                  onChangeText={(value) => setReceiptDraft((draft) => ({ ...draft, note: value }))}
+                  placeholder="Receipt note"
+                  multiline
+                  editable={!busy}
+                />
+                <View style={styles.modalActions}>
+                  <Button title="Cancel" onPress={closeReceiptEditor} disabled={busy} secondary />
+                  <Button title={busy ? 'Saving…' : 'Save receipt'} onPress={saveReceipt} disabled={busy} />
+                </View>
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -2109,6 +2283,35 @@ function formatDate(value) {
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: COLORS.background },
   appShell: { flex: 1, flexDirection: 'row' },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+  },
+  receiptEditor: {
+    maxHeight: '92%',
+    backgroundColor: COLORS.card,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    padding: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  modalTitle: {
+    color: COLORS.ink,
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 8,
+    marginBottom: 12,
+  },
   sidebar: {
     width: 252,
     flexShrink: 0,

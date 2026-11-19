@@ -33,7 +33,6 @@ import AllMenuPopup from "./screens/allMenuPopup";
 import VerificationScreen from "./screens/verificationScreen";
 import SecurityScreen from "./screens/securityScreen";
 import MfaSettingsScreen from "./screens/mfaSettingsScreen";
-import AccountLimitsScreen from "./screens/accountLimitsScreen";
 import TransactionFeesScreen from "./screens/transactionFeesScreen";
 import NotificationSettingsScreen from "./screens/notificationSettingsScreen";
 import ManageBeneficiariesScreen from "./screens/manageBeneficiariesScreen";
@@ -202,7 +201,6 @@ const App = () => {
         <Stack.Screen name="verification" component={VerificationScreen} />
         <Stack.Screen name="security" component={SecurityScreen} />
         <Stack.Screen name="mfaSettings" component={MfaSettingsScreen} />
-        <Stack.Screen name="accountLimits" component={AccountLimitsScreen} />
         <Stack.Screen name="transactionFees" component={TransactionFeesScreen} />
         <Stack.Screen name="notificationSettings" component={NotificationSettingsScreen} />
         <Stack.Screen name="manageBeneficiaries" component={ManageBeneficiariesScreen} />

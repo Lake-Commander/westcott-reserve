@@ -100,7 +100,7 @@ const ProfileScreen = ({ navigation }) => {
     <ScreenWrapper>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         
-        {/* Tier Header Card */}
+        {/* Account header */}
         <View style={[styles.tierCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
           <View style={styles.userTopRow}>
             <View style={styles.avatarCircle}>
@@ -123,29 +123,6 @@ const ProfileScreen = ({ navigation }) => {
             </View>
           </View>
 
-          {/* Tier Progress Bar */}
-          <View style={[styles.progressBarBg, { backgroundColor: theme.surfaceLight }]}>
-            <View style={styles.progressBarFill} />
-          </View>
-
-          {/* Tier Upgrade Row */}
-          <View style={styles.tierBottomRow}>
-            <View>
-              <Text style={[styles.tierText, { color: theme.textSecondary }]}>
-                You are currently on Tier 1
-              </Text>
-              <TouchableOpacity onPress={() => navigation.navigate('accountLimits')}>
-                <Text style={styles.upgradeLink}>Upgrade your limit</Text>
-              </TouchableOpacity>
-            </View>
-            <TouchableOpacity
-              style={styles.upgradeBtn}
-              onPress={() => navigation.navigate('accountLimits')}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.upgradeBtnText}>Upgrade</Text>
-            </TouchableOpacity>
-          </View>
         </View>
 
         {/* SECTION 1: SETTINGS */}
@@ -154,7 +131,6 @@ const ProfileScreen = ({ navigation }) => {
           {renderMenuItem("person-outline", "Profile", () => navigation.navigate('personalInfo'))}
           {renderMenuItem("checkmark-done-circle-outline", "Verification", () => navigation.navigate('verification'))}
           {renderMenuItem("lock-closed-outline", "Security", () => navigation.navigate('security'))}
-          {renderMenuItem("speedometer-outline", "Account Limits", () => navigation.navigate('accountLimits'))}
           {renderMenuItem("timer-outline", "Transaction Fees", () => navigation.navigate('transactionFees'))}
           {renderMenuItem("color-palette-outline", "App Preferences", () => navigation.navigate('preferences'))}
           {renderMenuItem("notifications-outline", "Notification Settings", () => navigation.navigate('notificationSettings'), true)}
