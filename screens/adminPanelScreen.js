@@ -129,6 +129,7 @@ async function fetchAdminTransactions() {
     'id,user_id,type,amount,counterparty,receiver_name,account_number,routing_number,bank_name,category,note,timestamp,created_at,review_status',
     'id,user_id,type,amount,counterparty,receiver_name,account_number,bank_name,category,note,timestamp,created_at,review_status',
     'id,user_id,type,amount,counterparty,receiver_name,account_number,category,note,timestamp,created_at,review_status',
+    'id,user_id,type,amount,counterparty,receiver_name,account_number,category,note,timestamp,created_at',
   ];
 
   for (const fields of attempts) {
@@ -141,13 +142,13 @@ async function fetchAdminTransactions() {
     if (!result.error) return result;
 
     const message = result.error.message || '';
-    const columnMissing = /column .* (routing_number|bank_name) .* does not exist|does not exist/i.test(message);
+    const columnMissing = /column .* (routing_number|bank_name|review_status) .* does not exist|does not exist/i.test(message);
     if (!columnMissing) return result;
   }
 
   return {
-    data: [],
-    error: null,
+    data: null,
+    error: new Error('Unable to load transactions because the transactions schema is incomplete. Apply the latest Supabase migrations and try again.'),
   };
 }
 
