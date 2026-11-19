@@ -136,6 +136,7 @@ async function fetchAdminTransactions() {
     const result = await supabase
       .from('transactions')
       .select(fields)
+      .order('timestamp', { ascending: false })
       .order('created_at', { ascending: false })
       .limit(150);
 

@@ -17,6 +17,7 @@ export const BankService = {
       .from('transactions')
       .select('*')
       .eq('user_id', userId)
+      .order('timestamp', { ascending: false })
       .order('created_at', { ascending: false });
     if (error) throw error;
     return data || [];

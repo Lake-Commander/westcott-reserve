@@ -62,7 +62,7 @@ const RequestStatementScreen = ({ navigation }) => {
     cutoff.setDate(cutoff.getDate() - days);
 
     return txList.filter((tx) => {
-      const txDate = new Date(tx.created_at || tx.timestamp);
+      const txDate = new Date(tx.timestamp || tx.created_at);
       return txDate >= cutoff;
     });
   };
@@ -88,7 +88,7 @@ const RequestStatementScreen = ({ navigation }) => {
         if (isCredit) totalCredits += amt;
         else totalDebits += amt;
 
-        const dateStr = new Date(tx.created_at || tx.timestamp).toLocaleDateString('en-US', {
+        const dateStr = new Date(tx.timestamp || tx.created_at).toLocaleDateString('en-US', {
           month: 'short',
           day: 'numeric',
           year: 'numeric',

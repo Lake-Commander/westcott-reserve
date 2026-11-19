@@ -1,5 +1,5 @@
 // screens/historyScreen.js
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { useSelector } from 'react-redux';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { G, Circle } from 'react-native-svg';
 import ScreenWrapper from '../components/ScreenWrapper';
@@ -28,9 +29,11 @@ const HistoryScreen = ({ navigation }) => {
   const [rawTransactions, setRawTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadTransactions();
-  }, [currentUser?.id]);
+  useFocusEffect(
+    useCallback(() => {
+      loadTransactions();
+    }, [currentUser?.id])
+  );
 
   const loadTransactions = async () => {
     setLoading(true);
@@ -53,7 +56,7 @@ const HistoryScreen = ({ navigation }) => {
 
     const groups = {};
     filtered.forEach((tx) => {
-      const d = new Date(tx.created_at || tx.timestamp || Date.now());
+      const d = new Date(tx.timestamp || tx.created_at || Date.now());
       const dateHeader = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
       if (!groups[dateHeader]) groups[dateHeader] = [];
       groups[dateHeader].push(tx);
@@ -246,7 +249,7 @@ const HistoryScreen = ({ navigation }) => {
                     {group.data.map((tx, idx) => {
                       const isCredit = tx.type === 'CREDIT';
                       const amt = parseFloat(tx.amount || 0);
-                      const timeStr = new Date(tx.created_at || tx.timestamp || Date.now()).toLocaleTimeString('en-US', {
+                      const timeStr = new Date(tx.timestamp || tx.created_at || Date.now()).toLocaleTimeString('en-US', {
                         hour: 'numeric',
                         minute: '2-digit',
                       });

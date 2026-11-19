@@ -62,7 +62,7 @@ export default function TransactionDetailsScreen({ navigation, route }) {
     ? transaction.counterparty || transaction.sender_name || transaction.receiver_name
     : transaction.receiver_name || transaction.counterparty;
   const reference = transaction.reference || transaction.idempotency_key || transaction.id;
-  const timestamp = formatDate(transaction.created_at || transaction.timestamp);
+  const timestamp = formatDate(transaction.timestamp || transaction.created_at);
   const accountNumber = transaction.account_number || transaction.receiver_account;
   const bank = transaction.bank_name || transaction.bank;
   const status = transaction.status

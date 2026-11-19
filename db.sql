@@ -73,7 +73,8 @@ CREATE TABLE IF NOT EXISTS public.transactions (
 ALTER TABLE public.transactions
   ADD COLUMN IF NOT EXISTS receiver_name TEXT,
   ADD COLUMN IF NOT EXISTS account_number TEXT,
-  ADD COLUMN IF NOT EXISTS bank_name TEXT;
+  ADD COLUMN IF NOT EXISTS bank_name TEXT,
+  ADD COLUMN IF NOT EXISTS timestamp TIMESTAMPTZ DEFAULT timezone('utc'::text, now());
 
 -- Enable Row Level Security (RLS)
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
