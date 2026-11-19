@@ -560,9 +560,13 @@ export default function AdminPanelScreen() {
       uiConfigResult,
       transferRestrictionResult,
     ].find((result) => result.error);
-    
-    if (failed) throw failed.error;
-    
+
+    if (failed) {
+      setLoadError(failed.error.message || 'One or more admin data sections could not be loaded.');
+    } else {
+      setLoadError('');
+    }
+
     setProfiles(profileResult.data || []);
     setTransferRestrictedIds((transferRestrictionResult.data || []).map((row) => row.user_id));
     setTransactions(transactionResult.data || []);
@@ -811,6 +815,74 @@ export default function AdminPanelScreen() {
         if (error) throw error;
       },
       'Transaction review status updated and recorded.'
+    );
+
+  const confirmDelete = async (title, message) => {
+    if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+      return window.confirm(message);
+    }
+    return await new Promise((resolve) => {
+      Alert.alert(title, message, [
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Delete', style: 'destructive', onPress: () => resolve(true) },
+      ], { onDismiss: () => resolve(false) });
+    });
+  };
+
+  const deleteTransaction = async (transaction) => {
+    const confirmed = await confirmDelete(
+      'Delete transaction pair',
+      'Delete this transaction for both the sender and recipient? This also removes the matching transfer copy.'
+    );
+    if (!confirmed) return;
+    await runAction(
+      async () => {
+        const { error } = await supabase.rpc('admin_delete_transaction', {
+          p_transaction_id: transaction.id,
+        });
+        if (error) throw error;
+      },
+      'Transaction deleted for both parties.'
+    );
+  };
+
+  const deleteAccount = async (profile) => {
+    const confirmed = await confirmDelete(
+      'Delete account',
+      `Permanently delete ${profile.name || profile.email}? This removes the profile and associated account data.`
+    );
+    if (!confirmed) return;
+    await runAction(
+      async () => {
+        const { error } = await supabase.rpc('admin_delete_account', {
+          p_user_id: profile.id,
+        });
+        if (error) throw error;
+      },
+      'Customer account deleted.'
+    );
+  };
+
+  const deleteChat = async (chat) =>
+    runAction(
+      async () => {
+        const { error } = await supabase.rpc('admin_delete_chat', {
+          p_session_id: chat.id,
+        });
+        if (error) throw error;
+      },
+      'Live chat deleted.'
+    );
+
+  const deleteCustomerCare = async (message) =>
+    runAction(
+      async () => {
+        const { error } = await supabase.rpc('admin_delete_customer_care', {
+          p_message_id: message.id,
+        });
+        if (error) throw error;
+      },
+      'Customer care request deleted.'
     );
 
   const openReceiptEditor = (transaction) => {
@@ -1456,6 +1528,12 @@ export default function AdminPanelScreen() {
                   disabled={busy}
                   secondary
                 />
+                <Button
+                  title="Delete transaction"
+                  onPress={() => deleteTransaction(transaction)}
+                  disabled={busy}
+                  danger
+                />
                 <View style={styles.stateButtons}>
                   {REVIEW_STATES.map((state) => (
                     <Button
@@ -1597,6 +1675,14 @@ export default function AdminPanelScreen() {
                       secondary={profile.is_active}
                       danger={profile.is_active}
                     />
+                    <View style={{ marginTop: 8 }}>
+                      <Button
+                        title="Delete account"
+                        onPress={() => deleteAccount(profile)}
+                        disabled={busy}
+                        danger
+                      />
+                    </View>
                   </View>
                 )}
               </Card>
@@ -1633,6 +1719,15 @@ export default function AdminPanelScreen() {
                     <Field label="Live Reply" value={liveReplyText} onChangeText={setLiveReplyText} placeholder="Type response..." multiline />
                     <View style={styles.stateButtons}>
                       <Button title="Send Live Reply" onPress={sendLiveReply} disabled={busy || !liveReplyText.trim()} />
+                      <Button
+                        title="Delete Chat"
+                        onPress={async () => {
+                          const confirmed = await confirmDelete('Delete chat', 'Delete this entire live chat thread?');
+                          if (confirmed) await deleteChat(chat);
+                        }}
+                        disabled={busy}
+                        danger
+                      />
                       <Button 
                         title="Close Chat" 
                         onPress={() => runAction(() => supabase.from('support_chat_sessions').update({ status: 'closed' }).eq('id', chat.id), 'Chat closed')} 
@@ -1642,11 +1737,22 @@ export default function AdminPanelScreen() {
                     </View>
                   </View>
                 ) : (
-                  <Button
-                    title={chat.status === 'open' ? 'Open Thread' : 'View History'}
-                    onPress={() => { setActiveSessionId(chat.id); setLiveReplyText(''); }}
-                    secondary={chat.status !== 'open'}
-                  />
+                  <View style={styles.stateButtons}>
+                    <Button
+                      title={chat.status === 'open' ? 'Open Thread' : 'View History'}
+                      onPress={() => { setActiveSessionId(chat.id); setLiveReplyText(''); }}
+                      secondary={chat.status !== 'open'}
+                    />
+                    <Button
+                      title="Delete Chat"
+                      onPress={async () => {
+                        const confirmed = await confirmDelete('Delete chat', 'Delete this entire live chat thread?');
+                        if (confirmed) await deleteChat(chat);
+                      }}
+                      disabled={busy}
+                      danger
+                    />
+                  </View>
                 )}
               </Card>
             ))}
@@ -1689,14 +1795,25 @@ export default function AdminPanelScreen() {
                     </View>
                   </>
                 ) : (
-                  <Button
-                    title={message.status === 'open' ? 'Respond' : 'Send another reply'}
-                    onPress={() => {
-                      setSelectedMessage(message);
-                      setReply('');
-                    }}
-                    secondary
-                  />
+                  <View style={styles.stateButtons}>
+                    <Button
+                      title={message.status === 'open' ? 'Respond' : 'Send another reply'}
+                      onPress={() => {
+                        setSelectedMessage(message);
+                        setReply('');
+                      }}
+                      secondary
+                    />
+                    <Button
+                      title="Delete"
+                      onPress={async () => {
+                        const confirmed = await confirmDelete('Delete customer care request', 'Delete this customer care request?');
+                        if (confirmed) await deleteCustomerCare(message);
+                      }}
+                      disabled={busy}
+                      danger
+                    />
+                  </View>
                 )}
               </Card>
             ))}
